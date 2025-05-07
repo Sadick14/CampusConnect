@@ -1,10 +1,11 @@
+
 'use client';
 
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { getUserProfile, type User as AppUser } from '@/services/user';
+import { getUserProfile, syncUserProfileOnLogin, type User as AppUser } from '@/services/user'; // Import syncUserProfileOnLogin
 import { useRouter, usePathname } from 'next/navigation';
 import { FirestoreError } from 'firebase/firestore';
 
@@ -26,68 +27,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setLoading(true); // Start loading when auth state changes
       setFirebaseUser(user);
       let profile: AppUser | null = null;
+
       if (user) {
         try {
-          profile = await getUserProfile(user.uid);
+          // First, try to get the existing profile
+          const existingProfile = await getUserProfile(user.uid);
+          // Then, call syncUserProfileOnLogin which handles creation/update/role assignment
+          profile = await syncUserProfileOnLogin(user, existingProfile);
           setCurrentUser(profile);
         } catch (error) {
-          console.error("Error fetching user profile on auth state change:", error);
-           if (error instanceof FirestoreError && error.message.includes("offline")) {
-              console.warn("AuthProvider: Could not fetch profile while offline. User is authenticated but profile data may be stale.");
-              // Decide if you want to set currentUser to null or keep potentially stale data
-              // Setting to null might trigger redirects if AuthGuard strictly checks currentUser
-              // Keeping stale data might show outdated info.
-              // For now, let's keep the last known state if available, otherwise null.
-              // setCurrentUser(currentUser); // Keep existing state if any
-              // Or set null to force re-fetch when online:
-               setCurrentUser(null); // Set to null when offline fetch fails
+          console.error("Error syncing/fetching user profile on auth state change:", error);
+           if (error instanceof FirestoreError && (error.message.includes("offline") || error.code === 'unavailable')) {
+              console.warn("AuthProvider: Could not sync/fetch profile while offline. User is authenticated but profile data may be stale or incomplete.");
+              // Attempt to use potentially stale data if available, otherwise null
+              setCurrentUser(currentUser); // Keep existing state if any (might be null)
            } else {
-              // Handle other errors fetching profile (e.g., permissions)
-               setCurrentUser(null); // Treat other errors as profile not available
+              // Handle other critical errors (e.g., permissions preventing sync)
+               console.error("Critical error during profile sync/fetch. Logging out.", error);
+               setCurrentUser(null);
+               // Consider logging out the user if profile sync fails critically
+               // await logout(); // Be careful with async operations in error handlers
            }
         }
       } else {
+        // No Firebase user, clear the app user profile
         setCurrentUser(null);
       }
-      setLoading(false);
+      setLoading(false); // Finish loading after profile handling
     });
 
     return () => unsubscribe();
-  }, []); // Removed currentUser from dependency array to avoid re-running unnecessarily
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
-  useEffect(() => {
-    // This effect handles redirection and is now mostly handled by AuthGuard
-    // Keeping it simple here, AuthGuard has the primary responsibility.
-    if (!loading && !firebaseUser && pathname !== '/login' && !pathname.startsWith('/_next/')) {
-       console.log("AuthContext: No Firebase user detected, redirecting might be needed.");
-       // AuthGuard will handle the actual push to /login
-    }
-     if (!loading && firebaseUser && !currentUser && pathname !== '/login' && !pathname.startsWith('/_next/')) {
-        // This state can happen if auth is OK but profile fetch failed (e.g., offline, permissions)
-        console.warn("AuthContext: Firebase user exists, but AppUser profile is null. Waiting for profile or potential issue.");
-        // Don't redirect here, let AuthGuard handle it, but log the state.
-        // If profile fetch consistently fails, it might indicate a Firestore issue or rules problem.
-     }
-
-  }, [firebaseUser, currentUser, loading, router, pathname]);
-
+  // Removed the secondary useEffect for redirection logic as AuthGuard handles it
 
   const logout = async () => {
-    setLoading(true);
+    // No need to set loading here, as onAuthStateChanged will trigger and set loading
     try {
       await firebaseSignOut(auth);
+      // Clear local state immediately for faster UI update
       setCurrentUser(null);
       setFirebaseUser(null);
-      router.push('/login');
+      router.push('/login'); // Redirect after sign out
+      console.log("User signed out successfully.");
     } catch (error) {
       console.error("Error signing out: ", error);
       // Handle error (e.g., show toast)
-    } finally {
-      // Ensure loading is set to false even on error, though redirect might happen first
-      setLoading(false); 
     }
+    // No finally block needed, onAuthStateChanged handles loading state
   };
 
   const value = {
@@ -97,7 +88,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  // Render children only when loading is false to prevent flash of incorrect content
+  // AuthGuard also provides a loading state, but this adds an extra layer
+  return (
+      <AuthContext.Provider value={value}>
+          {!loading ? children : (
+              // Optional: Render a global loading indicator here if desired
+              // Or rely on AuthGuard's loading indicator
+              null
+          )}
+      </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

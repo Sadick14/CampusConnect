@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -9,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Edit, Trash2, Loader2, ShieldAlert, ClipboardCopy } from "lucide-react";
+import { UserPlus, Edit, Trash2, Loader2, ShieldAlert, Eye, EyeOff } from "lucide-react"; // Added Eye icons
 import { getUsers, adminCreateUserProfile, adminUpdateUserProfile, type User, AdminUserFormSchema, type AdminUserFormData } from '@/services/user';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -17,7 +18,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, Controller } from 'react-hook-form';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { FormField, FormMessage } from '@/components/ui/form';
+import { Form, FormField, FormMessage, FormControl, FormLabel, FormItem } from '@/components/ui/form'; // Import Form components
 
 export default function UsersPage() {
   const { currentUser } = useAuth();
@@ -26,14 +27,16 @@ export default function UsersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showPassword, setShowPassword] = useState(false); // State for password visibility
   const { toast } = useToast();
-  const [createdUserId, setCreatedUserId] = useState<string | null>(null);
+  // Removed createdUserId state as UID is handled by Auth now
 
   const form = useForm<AdminUserFormData>({
     resolver: zodResolver(AdminUserFormSchema),
     defaultValues: {
       name: "",
       email: "",
+      password: "", // Initialize password
       role: "student",
       schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined,
     },
@@ -48,23 +51,33 @@ export default function UsersPage() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (editingUser) {
-      form.reset({
-        id: editingUser.id,
-        name: editingUser.name,
-        email: editingUser.email || '',
-        role: editingUser.role as 'student' | 'teacher' | 'school_admin',
-        schoolId: editingUser.schoolId,
-      });
+    // Reset form when dialog opens/closes or editingUser changes
+    if (isEditDialogOpen) {
+        if (editingUser) {
+            form.reset({
+                id: editingUser.id,
+                name: editingUser.name,
+                email: editingUser.email || '',
+                role: editingUser.role as 'student' | 'teacher' | 'school_admin',
+                schoolId: editingUser.schoolId,
+                password: '', // Don't pre-fill password for editing
+            });
+        } else {
+            form.reset({
+                name: "",
+                email: "",
+                password: "",
+                role: "student", // Default role for new user
+                schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined,
+            });
+        }
     } else {
-      form.reset({
-        name: "",
-        email: "",
-        role: "student",
-        schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined,
-      });
+         // Optional: Clear form state completely when dialog closes
+         form.reset({ name: "", email: "", password: "", role: "student", schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined });
     }
-  }, [editingUser, form, currentUser]);
+    setShowPassword(false); // Reset password visibility on dialog state change
+  }, [editingUser, isEditDialogOpen, form, currentUser]);
+
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -73,7 +86,7 @@ export default function UsersPage() {
       setUsers(fetchedUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
-      toast({ title: "Error", description: "Could not fetch users.", variant: "destructive" });
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Could not fetch users.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -81,68 +94,60 @@ export default function UsersPage() {
 
   const handleEditClick = (user: User) => {
     setEditingUser(user);
-    setCreatedUserId(null);
     setIsEditDialogOpen(true);
   };
 
   const handleAddNewClick = () => {
     setEditingUser(null);
-    setCreatedUserId(null);
     setIsEditDialogOpen(true);
   };
 
   const handleDialogClose = (open: boolean) => {
+    // Manually control the open state based on Radix callback
+    setIsEditDialogOpen(open);
     if (!open) {
-      setEditingUser(null);
-      setCreatedUserId(null);
-      form.reset({
-        name: "",
-        email: "",
-        role: "student",
-        schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined,
-      });
-      setIsEditDialogOpen(false);
-    } else {
-      setIsEditDialogOpen(true);
+      setEditingUser(null); // Clear editing state when closing
+      // Form reset is handled by useEffect
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      toast({ title: "User ID Copied!", description: "You can now use this as the UID when creating the Firebase Auth user." });
-    }).catch(err => {
-      toast({ title: "Copy failed", description: "Could not copy User ID.", variant: "destructive" });
-      console.error('Failed to copy text: ', err);
-    });
-  };
+  // Removed copyToClipboard as UID is not manually handled anymore
 
   async function onSubmit(values: AdminUserFormData) {
     if (!currentUser) return;
     setIsSubmitting(true);
-    setCreatedUserId(null);
 
     try {
       let resultUser: User;
       if (editingUser) {
+        // --- Update User ---
         if (!editingUser.id) throw new Error("Editing user ID is missing.");
-        resultUser = await adminUpdateUserProfile(editingUser.id, values, currentUser.role, currentUser.schoolId);
+        // Don't send password for updates
+        const { password, ...updateData } = values;
+        resultUser = await adminUpdateUserProfile(editingUser.id, updateData, currentUser.role, currentUser.schoolId);
         toast({ title: "User Updated", description: `${resultUser.name}'s profile has been updated.` });
-        fetchUsers();
-        handleDialogClose(false);
+        fetchUsers(); // Refresh list
+        handleDialogClose(false); // Close dialog on success
       } else {
+        // --- Create User ---
+        if (!values.password) {
+            form.setError("password", { type: "manual", message: "Password is required." });
+            setIsSubmitting(false);
+            return;
+        }
         const dataToSend = { ...values };
         if (currentUser.role === 'school_admin' && !dataToSend.schoolId) {
-          dataToSend.schoolId = currentUser.schoolId;
+          dataToSend.schoolId = currentUser.schoolId; // Ensure school admin assigns to their school
         }
+        // Pass the full data including password to adminCreateUserProfile
         resultUser = await adminCreateUserProfile(dataToSend, currentUser.role, currentUser.schoolId);
-        setCreatedUserId(resultUser.id);
         toast({
-          title: "Firestore Profile Created!",
-          description: `Profile for ${resultUser.name} created. Now create the Firebase Auth user.`,
-          duration: 5000
+          title: "User Created Successfully!",
+          description: `Auth account and Firestore profile created for ${resultUser.name}.`,
+          duration: 7000
         });
-        fetchUsers();
+        fetchUsers(); // Refresh list
+        handleDialogClose(false); // Close dialog on success
       }
     } catch (error: any) {
       console.error("Error submitting user form:", error);
@@ -152,13 +157,12 @@ export default function UsersPage() {
         variant: "destructive",
         duration: 7000
       });
+      // Keep dialog open on error
     } finally {
       setIsSubmitting(false);
-      if (editingUser || (!editingUser && !createdUserId && !isSubmitting)) {
-        handleDialogClose(false);
-      }
     }
   }
+
 
   if (isLoading) {
     return (
@@ -170,7 +174,7 @@ export default function UsersPage() {
 
   if (!currentUser || (currentUser.role !== 'superadmin' && currentUser.role !== 'school_admin')) {
     return (
-      <>
+      <div className="container mx-auto px-4">
         <PageHeader title="User Management" description="You do not have permission to manage users." />
         <Card className="mt-6">
           <CardContent className="pt-6 text-center text-muted-foreground">
@@ -178,13 +182,13 @@ export default function UsersPage() {
             Access Denied. You do not have the necessary permissions to view this page.
           </CardContent>
         </Card>
-      </>
+      </div>
     );
   }
 
   const allowedRoles = currentUser.role === 'superadmin'
     ? ['student', 'teacher', 'school_admin']
-    : ['student', 'teacher'];
+    : ['student', 'teacher']; // School admins cannot create other admins
 
   return (
     <div className="container mx-auto px-4">
@@ -193,7 +197,7 @@ export default function UsersPage() {
         description={currentUser.role === 'superadmin' ? "Administer all user accounts." : `Manage users for ${currentUser.schoolName || 'your school'}.`}
         actions={
           <Button onClick={handleAddNewClick}>
-            <UserPlus className="mr-2 h-4 w-4" /> Add New User Profile
+            <UserPlus className="mr-2 h-4 w-4" /> Add New User
           </Button>
         }
       />
@@ -201,128 +205,175 @@ export default function UsersPage() {
       <Dialog open={isEditDialogOpen} onOpenChange={handleDialogClose}>
         <DialogContent className="sm:max-w-[425px]" aria-describedby="dialog-description">
           <DialogHeader>
-            <DialogTitle>{editingUser ? 'Edit User Profile' : 'Add New User Profile'}</DialogTitle>
+            <DialogTitle>{editingUser ? 'Edit User Profile' : 'Add New User'}</DialogTitle>
             <DialogDescription id="dialog-description">
-              {editingUser ? `Update ${editingUser.name}'s profile.` : "Create a new user profile in Firestore."}
+              {editingUser
+                ? `Update ${editingUser.name}'s profile details. Email and password cannot be changed here.`
+                : "Create a new user's authentication account and Firestore profile."}
             </DialogDescription>
           </DialogHeader>
 
-          {!editingUser && createdUserId && (
-            <Alert variant="default" className="mt-4 bg-green-100 border-green-300 dark:bg-green-900 dark:border-green-700">
-              <ShieldAlert className="h-4 w-4 text-green-700 dark:text-green-300" />
-              <AlertTitle className="text-green-800 dark:text-green-200">Success & Next Step</AlertTitle>
-              <AlertDescription className="text-green-700 dark:text-green-300 space-y-2">
-                <p>Firestore profile created successfully!</p>
-                <div className="flex items-center gap-2 mt-1 p-1 bg-muted rounded">
-                  <code className="font-mono text-sm text-primary flex-grow">{createdUserId}</code>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(createdUserId)}
-                    title="Copy User ID"
-                    className="px-2"
-                  >
-                    <ClipboardCopy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
+          {/* Removed the success alert for UID copying */}
 
-          {(!createdUserId || editingUser) && (
+          <Form {...form}> {/* Wrap form elements */}
             <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
-              {!editingUser && (
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="email" className="text-right">Email</Label>
-                  <Input id="email" {...form.register("email")} className="col-span-3" placeholder="user@example.com" type="email" />
-                  {form.formState.errors.email && (
-                    <span className="col-start-2 col-span-3 text-sm text-destructive">
-                      {form.formState.errors.email.message}
-                    </span>
-                  )}
-                </div>
-              )}
-              
-              {editingUser && (
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="email-display" className="text-right">Email</Label>
-                  <Input id="email-display" value={editingUser.email || ''} className="col-span-3 bg-muted" readOnly disabled />
-                </div>
-              )}
 
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">Name</Label>
-                <Input id="name" {...form.register("name")} className="col-span-3" placeholder="Full Name" />
-                {form.formState.errors.name && (
-                  <span className="col-start-2 col-span-3 text-sm text-destructive">
-                    {form.formState.errors.name.message}
-                  </span>
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-4 items-center gap-4">
+                    <FormLabel className="text-right">Email</FormLabel>
+                    <FormControl className="col-span-3">
+                       <Input
+                          id="email"
+                          {...field}
+                          placeholder="user@example.com"
+                          type="email"
+                          readOnly={!!editingUser} // Email is read-only when editing
+                          disabled={!!editingUser}
+                          className={editingUser ? 'bg-muted cursor-not-allowed' : ''}
+                        />
+                    </FormControl>
+                    <FormMessage className="col-start-2 col-span-3" />
+                  </FormItem>
                 )}
-              </div>
+              />
 
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="role" className="text-right">Role</Label>
-                <Controller
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-4 items-center gap-4">
+                    <FormLabel htmlFor="name" className="text-right">Name</FormLabel>
+                    <FormControl className="col-span-3">
+                        <Input id="name" {...field} placeholder="Full Name" />
+                    </FormControl>
+                    <FormMessage className="col-start-2 col-span-3" />
+                  </FormItem>
+                )}
+              />
+
+              {/* Password field only shown when creating a new user */}
+              {!editingUser && (
+                <FormField
                   control={form.control}
-                  name="role"
+                  name="password"
                   render={({ field }) => (
-                    <Select onValueChange={field.onChange} value={field.value} disabled={editingUser?.id === 'superadmin'}>
-                      <SelectTrigger id="role" className="col-span-3">
-                        <SelectValue placeholder="Select a role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allowedRoles.map(roleOption => (
-                          <SelectItem
-                            key={roleOption}
-                            value={roleOption}
-                            disabled={roleOption === 'school_admin' && currentUser?.role === 'school_admin' && !editingUser}
-                          >
-                            {roleOption.charAt(0).toUpperCase() + roleOption.slice(1).replace('_', ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormItem className="grid grid-cols-4 items-center gap-4">
+                      <FormLabel className="text-right">Password</FormLabel>
+                       <FormControl className="col-span-3">
+                         <div className="relative">
+                           <Input
+                             type={showPassword ? "text" : "password"}
+                             placeholder="Enter password (min 8 chars)"
+                             {...field}
+                           />
+                            <Button
+                             type="button"
+                             variant="ghost"
+                             size="icon"
+                             className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                             onClick={() => setShowPassword(!showPassword)}
+                             tabIndex={-1}
+                           >
+                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                             <span className="sr-only">{showPassword ? 'Hide password' : 'Show password'}</span>
+                           </Button>
+                         </div>
+                       </FormControl>
+                      <FormMessage className="col-start-2 col-span-3" />
+                    </FormItem>
                   )}
                 />
-              </div>
-
-              {currentUser.role === 'superadmin' && (
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="schoolId" className="text-right">School ID</Label>
-                  <Input
-                    id="schoolId"
-                    {...form.register("schoolId")}
-                    className="col-span-3"
-                    placeholder="Enter School ID"
-                    disabled={form.watch("role") === 'superadmin'}
-                  />
-                </div>
               )}
 
-              {currentUser.role === 'school_admin' && (
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="schoolId-display" className="text-right">School</Label>
-                  <Input
-                    id="schoolId-display"
-                    value={currentUser.schoolName ? `${currentUser.schoolName} (${currentUser.schoolId})` : currentUser.schoolId || 'N/A'}
-                    className="col-span-3 bg-muted"
-                    readOnly
-                    disabled
-                  />
-                </div>
-              )}
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-4 items-center gap-4">
+                    <FormLabel className="text-right">Role</FormLabel>
+                    <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={editingUser?.id === 'superadmin'} // Cannot change superadmin role
+                    >
+                        <FormControl className="col-span-3">
+                          <SelectTrigger id="role">
+                              <SelectValue placeholder="Select a role" />
+                          </SelectTrigger>
+                         </FormControl>
+                         <SelectContent>
+                          {allowedRoles.map(roleOption => (
+                              <SelectItem
+                                  key={roleOption}
+                                  value={roleOption}
+                                  // Prevent school admin from creating another school admin
+                                  disabled={roleOption === 'school_admin' && currentUser?.role === 'school_admin' && !editingUser}
+                              >
+                                  {roleOption.charAt(0).toUpperCase() + roleOption.slice(1).replace('_', ' ')}
+                              </SelectItem>
+                          ))}
+                         </SelectContent>
+                    </Select>
+                    <FormMessage className="col-start-2 col-span-3" />
+                  </FormItem>
+                 )}
+              />
+
+              {/* School ID assignment - Conditional based on admin role */}
+               {currentUser.role === 'superadmin' && (
+                 <FormField
+                   control={form.control}
+                   name="schoolId"
+                   render={({ field }) => (
+                     <FormItem className="grid grid-cols-4 items-center gap-4">
+                       <FormLabel htmlFor="schoolId" className="text-right">School ID</FormLabel>
+                       <FormControl className="col-span-3">
+                           <Input
+                              id="schoolId"
+                              {...field}
+                              placeholder="Enter School ID (optional)"
+                              // Disable school ID if the role is superadmin (they don't belong to a school)
+                              disabled={form.watch("role") === 'superadmin'}
+                              value={field.value ?? ''} // Handle null value for input
+                              onChange={(e) => field.onChange(e.target.value || null)} // Send null if empty
+                           />
+                       </FormControl>
+                       <FormMessage className="col-start-2 col-span-3" />
+                     </FormItem>
+                   )}
+                 />
+               )}
+
+               {currentUser.role === 'school_admin' && (
+                  <FormItem className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="schoolId-display" className="text-right">School</Label>
+                    <Input
+                      id="schoolId-display"
+                      value={currentUser.schoolName ? `${currentUser.schoolName} (${currentUser.schoolId})` : currentUser.schoolId || 'N/A'}
+                      className="col-span-3 bg-muted"
+                      readOnly
+                      disabled
+                    />
+                     {/* Hidden input to ensure schoolId is submitted correctly for school admins */}
+                     <input type="hidden" {...form.register("schoolId")} value={currentUser.schoolId || ''} />
+                   </FormItem>
+               )}
+
 
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">Cancel</Button>
                 </DialogClose>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingUser ? 'Save Changes' : 'Create Profile')}
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingUser ? 'Save Changes' : 'Create User')}
                 </Button>
               </DialogFooter>
             </form>
-          )}
+          </Form> {/* End Form */}
+
         </DialogContent>
       </Dialog>
 
@@ -348,7 +399,7 @@ export default function UsersPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>School</TableHead>
-                  <TableHead>User ID</TableHead>
+                  <TableHead>User ID (Auth UID)</TableHead>
                   <TableHead>Created At</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -362,15 +413,7 @@ export default function UsersPage() {
                     <TableCell>{user.schoolName || (user.role === 'superadmin' ? 'N/A' : (user.schoolId ? `ID: ${user.schoolId}` : 'N/A'))}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {user.id}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="ml-1 h-5 w-5"
-                        onClick={() => copyToClipboard(user.id)}
-                        title="Copy User ID"
-                      >
-                        <ClipboardCopy className="h-3 w-3"/>
-                      </Button>
+                      {/* Removed copy button for UID */}
                     </TableCell>
                     <TableCell>{user.createdAt ? format(new Date(user.createdAt), 'PP') : 'N/A'}</TableCell>
                     <TableCell className="text-right">
@@ -378,11 +421,17 @@ export default function UsersPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleEditClick(user)}
+                         // Prevent non-superadmins from editing the superadmin profile
                         disabled={user.id === 'superadmin' && currentUser?.id !== 'superadmin'}
                       >
                         <Edit className="h-4 w-4" />
                         <span className="sr-only">Edit</span>
                       </Button>
+                       {/* TODO: Add Delete functionality with confirmation */}
+                       {/* <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" disabled={user.id === 'superadmin'}>
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Delete</span>
+                       </Button> */}
                     </TableCell>
                   </TableRow>
                 ))}

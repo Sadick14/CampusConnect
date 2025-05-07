@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,8 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { createUserProfile, getUserProfile, User } from '@/services/user'; 
-import { FirestoreError } from 'firebase/firestore';
+// Removed user service imports as profile sync is handled by AuthContext
 
 const loginFormSchema = z.object({
   email: z.string().email('Invalid email address.'),
@@ -46,61 +46,39 @@ export function LoginForm() {
   async function onSubmit(values: LoginFormValues) {
     setIsLoading(true);
     try {
+      // Sign in the user
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const firebaseUser = userCredential.user;
 
-      // Attempt to get or create user profile
-      let userProfile: User | null = null;
-      try {
-        userProfile = await getUserProfile(firebaseUser.uid);
-        if (!userProfile) {
-          console.log(`No profile found for UID ${firebaseUser.uid}, attempting to create...`);
-          // Pass necessary info, createUserProfile determines role (e.g., superadmin based on email)
-          userProfile = await createUserProfile(firebaseUser, {}); 
-          console.log('Profile created:', userProfile);
-        } else {
-           // If profile exists, ensure role is updated if it's the superadmin logging in
-           if (firebaseUser.email === 'superadmin@example.com' && userProfile.role !== 'superadmin') {
-              console.log(`Updating role for ${firebaseUser.email} to superadmin.`);
-              userProfile = await createUserProfile(firebaseUser, { role: 'superadmin' }); // This effectively updates the role via merge: true
-           }
-           console.log('Profile found:', userProfile);
-        }
-      } catch (profileError: any) {
-          console.error('Error getting/creating user profile:', profileError);
-           if (profileError instanceof Error && profileError.message.includes("offline")) {
-                toast({
-                    title: 'Login Partially Successful (Offline)',
-                    description: "Logged in, but couldn't fetch your full profile as the app is offline. Some features might be limited.",
-                    variant: 'default', // Or a custom 'warning' variant
-                    duration: 5000,
-                });
-                 // Allow login even if profile fetch fails offline, but currentUser in context might be null/stale initially
-                 router.push('/'); 
-                 return; // Exit onSubmit early
-            }
-          // If profile creation/retrieval fails for other reasons, treat it as a login failure
-          throw new Error(`Failed to load user profile: ${profileError.message}`);
-      }
+      // Profile fetching/syncing is now handled by the onAuthStateChanged listener
+      // in AuthContext via syncUserProfileOnLogin. We just need to log in here.
 
       toast({
-        title: 'Login Successful',
-        description: `Welcome back, ${userProfile?.name || firebaseUser.email}!`,
+        title: 'Login Initiated',
+        description: `Welcome back, ${firebaseUser.email}! Verifying profile...`, // Give immediate feedback
       });
-      router.push('/'); // Redirect to dashboard after successful login and profile handling
+
+      // The AuthProvider will detect the auth change, fetch/sync the profile,
+      // update the currentUser state, and AuthGuard will handle redirection.
+      // We can optimistically push, or wait for AuthGuard. Pushing immediately might be slightly faster UI-wise.
+      router.push('/'); // Redirect to dashboard
 
     } catch (error: any) {
       console.error('Error logging in:', error);
       let errorMessage = 'Login failed. Please try again.';
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      // Firebase Auth error codes: https://firebase.google.com/docs/reference/js/v8/firebase.auth.Auth#error-codes_1
+      if (error.code === 'auth/user-not-found' ||
+          error.code === 'auth/wrong-password' ||
+          error.code === 'auth/invalid-credential' || // Generic credential error
+          error.code === 'auth/invalid-email') {
         errorMessage = 'Invalid email or password.';
-      } else if (error instanceof FirestoreError && error.message.includes("offline")) {
-         // This case might be caught by the inner try/catch now, but keep as fallback
-         errorMessage = "Login failed: Could not connect to the database. Please check your connection.";
-      } else if (error.message.includes('Failed to load user profile')) {
-          errorMessage = error.message; // Use the specific profile error
+      } else if (error.code === 'auth/too-many-requests') {
+         errorMessage = 'Too many login attempts. Please try again later.';
+      } else if (error.code === 'auth/network-request-failed') {
+         errorMessage = 'Network error. Please check your connection and try again.';
       }
-      
+      // Note: Firestore offline errors during profile sync are handled in AuthContext now.
+
       toast({
         title: 'Login Failed',
         description: errorMessage,
@@ -112,12 +90,32 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-md shadow-xl">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-2xl text-primary">
-          <LogIn className="h-6 w-6" /> CampusConnect Pro Login
-        </CardTitle>
-        <CardDescription>
+    <Card className="w-full max-w-md shadow-xl border border-border/30">
+       <CardHeader className="text-center">
+         {/* Logo and Title */}
+        <div className="inline-block mb-4">
+             <div className="flex items-center justify-center gap-2 p-2">
+                 <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-10 w-10" // Slightly smaller
+                >
+                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                    <path d="M2 17l10 5 10-5" />
+                    <path d="M2 12l10 5 10-5" />
+                </svg>
+                <h1 className="text-3xl font-bold text-primary">
+                    CampusConnect Pro
+                </h1>
+            </div>
+        </div>
+        <CardTitle className="text-2xl font-semibold text-foreground">Login</CardTitle>
+        <CardDescription className="text-muted-foreground">
           Enter your credentials to access your account.
         </CardDescription>
       </CardHeader>
@@ -164,8 +162,9 @@ export function LoginForm() {
        {/* Optional: Add links for "Forgot Password?" or "Sign Up" */}
         <CardContent className="mt-0 pt-0 text-center text-sm">
           <p className="text-muted-foreground">
-            Don&apos;t have an account? Contact admin.
+            Credentials required. Contact admin if needed.
           </p>
+           {/* <Link href="/forgot-password" className="text-primary hover:underline">Forgot Password?</Link> */}
         </CardContent>
     </Card>
   );

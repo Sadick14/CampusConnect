@@ -3,8 +3,9 @@
  * @fileOverview Service functions for managing user data.
  */
 import { doc, getDoc, setDoc, collection, getDocs, query, where, updateDoc, serverTimestamp, Timestamp, FirestoreError } from 'firebase/firestore';
-import type { User as FirebaseUser } from 'firebase/auth';
-import { db } from '@/lib/firebase';
+import type { User as FirebaseUser } from 'firebase/auth'; // Keep FirebaseUser type
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Import auth functions
+import { db, auth } from '@/lib/firebase';
 import type { School } from './school'; // Assuming School type is available
 import { z } from 'zod';
 
@@ -47,17 +48,21 @@ export interface User {
 }
 
 // Zod schema for validating user data when created/edited by an admin
-// NOTE: `id` is included for updates but generated for creates.
-// `authUid` is removed as it's no longer manually input in this workflow.
+// Now includes password for creation.
 export const AdminUserFormSchema = z.object({
   id: z.string().optional(), // Firestore Doc ID, present when editing.
   name: z.string().min(2, "Name must be at least 2 characters."),
   email: z.string().email("Invalid email address."),
+  password: z.string().min(8, "Password must be at least 8 characters.").optional(), // Required for creation, optional for update
   role: z.enum(['student', 'teacher', 'school_admin'], { // Superadmin role handled separately
     errorMap: () => ({ message: "Invalid role selected." })
   }),
   schoolId: z.string().optional().nullable(), // Allow null or optional string
+}).refine(data => data.id || data.password, { // Password is required if ID is not present (i.e., creating)
+    message: "Password is required when creating a new user.",
+    path: ["password"],
 });
+
 export type AdminUserFormData = z.infer<typeof AdminUserFormSchema>;
 
 
@@ -85,9 +90,10 @@ export async function getUserProfile(uid: string): Promise<User | null> {
             const schoolDocRef = doc(db, 'schools', data.schoolId);
             const schoolSnap = await getDoc(schoolDocRef);
             if (schoolSnap.exists()) {
-            schoolName = (schoolSnap.data() as School).name;
-            // Optionally update the user profile with the fetched name (can cause extra writes)
-            // await updateDoc(userDocRef, { schoolName: schoolName });
+              const schoolData = schoolSnap.data() as School;
+              schoolName = schoolData.name;
+              // Optionally update the user profile with the fetched name (can cause extra writes)
+              // await updateDoc(userDocRef, { schoolName: schoolName });
             } else {
                 console.warn(`School document ${data.schoolId} not found for user ${uid}.`);
                 schoolName = null; // Set to null if school doc is missing
@@ -110,122 +116,191 @@ export async function getUserProfile(uid: string): Promise<User | null> {
       };
     } else {
       console.warn(`No profile found for user UID: ${uid} in 'users' collection.`);
+      // Check if this is the superadmin UID, if so, create profile on the fly (handled in login logic now)
+      // if (uid === 'superadmin') {
+      //   console.log("Superadmin profile not found, will be created on login.");
+      // }
       return null;
     }
   } catch (error: any) {
     console.error(`Error fetching user profile for UID ${uid}:`, error);
     if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
         console.warn("getUserProfile: Failed to get user profile because the client is offline.");
-        return null;
+        // Consider returning a placeholder or cached data if available
+        return null; // Or potentially throw to indicate critical failure
     }
-    return null;
+     if (error instanceof FirestoreError && error.code === 'permission-denied') {
+        console.error(`Permission denied fetching user profile for UID ${uid}. Check Firestore rules.`);
+        // Return null or throw, depending on how you want AuthGuard to react
+        return null;
+     }
+    return null; // Return null for other errors
   }
 }
 
 /**
- * Creates or updates a user's profile in Firestore.
- * IMPORTANT: This is typically called during login to ensure the profile exists and matches Auth info.
- * It handles the special 'superadmin' UID case.
- * For admin-initiated creation, use `adminCreateUserProfile`.
- * @param firebaseUser The Firebase Auth user object.
- * @param additionalData Additional data like role or schoolId (usually from existing profile or defaults).
- * @returns Promise resolving to the created/updated User profile.
+ * Creates or updates the user's profile in Firestore *during the login process*.
+ * This ensures the profile exists and syncs basic info (name, email) from Auth.
+ * It also specifically handles setting the 'superadmin' role based on the UID.
+ * @param firebaseUser The Firebase Auth user object from onAuthStateChanged or signIn.
+ * @param existingProfileData Optional: If profile was fetched *before* calling this (e.g., in AuthProvider).
+ * @returns Promise resolving to the User profile from Firestore.
  */
-export async function createUserProfile(
+export async function syncUserProfileOnLogin(
   firebaseUser: FirebaseUser,
-  additionalData: Partial<Omit<User, 'id' | 'email' | 'name'>> = {}
+  existingProfileData?: User | null // Pass existing data if already fetched
 ): Promise<User> {
-  const userDocRef = doc(db, 'users', firebaseUser.uid);
+    const userDocRef = doc(db, 'users', firebaseUser.uid);
+    let needsWrite = false;
+    let profileDataToSave: Partial<User> & { updatedAt: any, createdAt?: any } = {
+        updatedAt: serverTimestamp(),
+    };
 
-  // Determine role: superadmin based on UID overrides everything else.
-  let role = 'student'; // Default role if not specified and not superadmin
-  if (firebaseUser.uid === 'superadmin') {
-    role = 'superadmin';
-    console.log(`Assigning superadmin role based on UID: ${firebaseUser.uid}`);
-    // Superadmin should not be associated with a specific school
-    additionalData.schoolId = null;
-    additionalData.schoolName = null;
-  } else if (additionalData.role) {
-    role = additionalData.role; // Use provided role if not superadmin UID
-  }
+    let currentRole = existingProfileData?.role;
+    let currentSchoolId = existingProfileData?.schoolId;
+    let currentSchoolName = existingProfileData?.schoolName;
 
-  // Prepare data for Firestore write/merge
-  const userProfileData: Partial<Omit<User, 'id'>> & { createdAt?: any, updatedAt: any } = {
-    name: firebaseUser.displayName || additionalData.name || firebaseUser.email?.split('@')[0] || 'Anonymous User',
-    email: firebaseUser.email,
-    schoolId: additionalData.schoolId ?? null, // Use provided or default to null
-    schoolName: additionalData.schoolName ?? null, // Use provided or default to null
-    ...additionalData, // Spread provided data first
-    role: role,        // Ensure determined role takes precedence
-    updatedAt: serverTimestamp(),
-    createdAt: serverTimestamp(), // Firestore handles this on create during merge
-  };
-
-
-  // If schoolId is present and schoolName is not, try to fetch schoolName
-  if (userProfileData.schoolId && !userProfileData.schoolName) {
-    try {
-      const schoolDoc = await getDoc(doc(db, 'schools', userProfileData.schoolId));
-      if (schoolDoc.exists()) {
-        userProfileData.schoolName = (schoolDoc.data() as School).name;
-      } else {
-         console.warn(`School ${userProfileData.schoolId} not found when creating/updating profile for ${firebaseUser.uid}. Setting schoolName to null.`);
-         userProfileData.schoolName = null; // Ensure consistency
-      }
-    } catch (error) {
-      console.error(`Error fetching school name for schoolId ${userProfileData.schoolId}:`, error);
-      userProfileData.schoolName = null; // Set to null on error
+    // 1. Determine Role (Superadmin override)
+    if (firebaseUser.uid === 'superadmin') {
+        if (currentRole !== 'superadmin') {
+            console.log(`User ${firebaseUser.uid} is superadmin. Setting/updating role.`);
+            profileDataToSave.role = 'superadmin';
+            profileDataToSave.schoolId = null; // Superadmin has no school
+            profileDataToSave.schoolName = null;
+            needsWrite = true;
+        }
+         // Ensure role is superadmin even if profile somehow existed with a different role
+         currentRole = 'superadmin';
+         currentSchoolId = null;
+         currentSchoolName = null;
+    } else if (!currentRole) {
+        // If profile didn't exist or had no role, assign default (e.g., 'student')
+        // This case is less likely if profiles are created via admin actions first.
+        console.warn(`User ${firebaseUser.uid} has no role in Firestore profile. Assigning default 'student'.`);
+        profileDataToSave.role = 'student';
+        currentRole = 'student';
+        needsWrite = true;
+    } else {
+         // Use the role from the existing profile if not superadmin
+         profileDataToSave.role = currentRole;
     }
-  }
 
-  // Clean data: Remove undefined values before sending to Firestore
-  const cleanData = Object.entries(userProfileData).reduce((acc, [key, value]) => {
-    if (value !== undefined) {
-      acc[key as keyof typeof userProfileData] = value;
+
+    // 2. Sync Basic Info (Name, Email) if different from Auth
+    const authName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
+    const existingName = existingProfileData?.name;
+    if (!existingProfileData || authName !== existingName) {
+         // Prefer existing Firestore name unless it's missing/default and Auth has a better one.
+         // Let admin updates control the canonical name, generally. Only set if Firestore is missing it.
+         if (!existingName || existingName === 'Anonymous User' || existingName === 'Unnamed User') {
+             profileDataToSave.name = authName;
+             needsWrite = true;
+         } else if (!profileDataToSave.name) {
+              // Ensure name field is set even if not changing
+              profileDataToSave.name = existingName;
+         }
+    } else if (!profileDataToSave.name) {
+         profileDataToSave.name = existingName;
     }
-    // Keep explicit nulls (like for schoolId/schoolName)
-    else if (value === null && (key === 'schoolId' || key === 'schoolName')) {
-        acc[key as keyof typeof userProfileData] = null;
+
+
+    if (!existingProfileData || firebaseUser.email !== existingProfileData.email) {
+        profileDataToSave.email = firebaseUser.email;
+        needsWrite = true;
+    } else if (!profileDataToSave.email) {
+        profileDataToSave.email = existingProfileData.email;
     }
-    return acc;
-  }, {} as { [key: string]: any }); // Cast to allow serverTimestamp
+
+     // 3. Set schoolId/schoolName based on currentRole (ensure consistency)
+     if (currentRole === 'superadmin') {
+         if (currentSchoolId !== null || currentSchoolName !== null) {
+             profileDataToSave.schoolId = null;
+             profileDataToSave.schoolName = null;
+             needsWrite = true;
+         } else {
+             profileDataToSave.schoolId = null;
+             profileDataToSave.schoolName = null;
+         }
+     } else {
+         // Use existing schoolId/Name if available, otherwise null
+         profileDataToSave.schoolId = currentSchoolId ?? null;
+         profileDataToSave.schoolName = currentSchoolName ?? null;
+         // Note: We don't fetch schoolName here; assume it's correct if present.
+         // getUserProfile handles fetching if missing.
+     }
 
 
-  try {
-    // Use setDoc with merge: true to create or update
-    await setDoc(userDocRef, cleanData, { merge: true });
-    console.log(`User profile created/updated for UID: ${firebaseUser.uid}`, cleanData);
+    // 4. Add createdAt timestamp if creating new profile
+    if (!existingProfileData) {
+        profileDataToSave.createdAt = serverTimestamp();
+        needsWrite = true;
+        console.log(`Creating new Firestore profile for user ${firebaseUser.uid}`);
+    }
 
-    // Fetch the just-written doc to return the complete profile
-    const savedProfileSnap = await getDoc(userDocRef);
-    if (savedProfileSnap.exists()) {
-        const savedData = savedProfileSnap.data();
+    // 5. Perform Write only if necessary
+    if (needsWrite) {
+        try {
+             // Clean data just before writing
+             const cleanData = Object.entries(profileDataToSave).reduce((acc, [key, value]) => {
+                 if (value !== undefined) {
+                     acc[key as keyof typeof profileDataToSave] = value;
+                 }
+                 return acc;
+             }, {} as { [key: string]: any });
+
+            await setDoc(userDocRef, cleanData, { merge: true });
+            console.log(`User profile synced/created for UID: ${firebaseUser.uid}`);
+        } catch (error: any) {
+            console.error(`Error syncing user profile for UID ${firebaseUser.uid}:`, error);
+             if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+                 console.error("syncUserProfileOnLogin failed: Client is offline.");
+                 // Decide how to handle - maybe return existing data or throw?
+                 // Returning existing might be safer for login flow continuity.
+                 if (existingProfileData) return existingProfileData;
+                 throw new Error(`Failed to sync user profile (offline): ${error.message}`); // Throw if no existing data
+             }
+            throw new Error(`Failed to sync user profile: ${error.message}`);
+        }
+    } else {
+         console.log(`User profile for ${firebaseUser.uid} is up-to-date. No sync needed.`);
+    }
+
+    // 6. Return the definitive profile state (fetch again if written, or use existing/merged)
+    if (needsWrite) {
+        const finalSnap = await getDoc(userDocRef);
+        if (!finalSnap.exists()) throw new Error("Failed to retrieve profile after sync write.");
+        const finalData = finalSnap.data();
         return {
             id: firebaseUser.uid,
-            name: savedData.name,
-            email: savedData.email,
-            role: savedData.role,
-            schoolId: savedData.schoolId ?? null,
-            schoolName: savedData.schoolName ?? null,
-            createdAt: savedData.createdAt instanceof Timestamp ? savedData.createdAt.toDate().toISOString() : undefined,
-            updatedAt: savedData.updatedAt instanceof Timestamp ? savedData.updatedAt.toDate().toISOString() : undefined,
+            name: finalData.name,
+            email: finalData.email,
+            role: finalData.role,
+            schoolId: finalData.schoolId ?? null,
+            schoolName: finalData.schoolName ?? null,
+            createdAt: finalData.createdAt instanceof Timestamp ? finalData.createdAt.toDate().toISOString() : undefined,
+            updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : undefined,
+        };
+    } else {
+        // Return the merged data if no write occurred but fields were potentially added
+        return {
+            id: firebaseUser.uid,
+            name: profileDataToSave.name!, // Should be set
+            email: profileDataToSave.email!, // Should be set
+            role: profileDataToSave.role!, // Should be set
+            schoolId: profileDataToSave.schoolId,
+            schoolName: profileDataToSave.schoolName,
+            createdAt: existingProfileData?.createdAt, // Preserve original
+            updatedAt: existingProfileData?.updatedAt, // Preserve original
         };
     }
-    throw new Error("Failed to retrieve profile after creation/update.");
-
-  } catch (error: any) {
-    console.error(`Error setting user profile for UID ${firebaseUser.uid}:`, error);
-     if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
-         console.error("createUserProfile failed: Client is offline.");
-         throw new Error(`Failed to create/update user profile because the client is offline: ${error.message}`);
-     }
-    throw new Error(`Failed to create/update user profile: ${error.message}`);
-  }
 }
+
+
 
 /**
  * Retrieves all users (for superadmin) or users for a specific school (for school_admin).
- * @param forSchoolId Optional school ID to filter users by.
+ * @param forSchoolId Optional school ID to filter users by. If provided, only users matching this schoolId are returned.
+ *                    If undefined, behavior depends on the caller's assumed role (superadmin likely gets all, others might get none or error).
  * @returns A promise that resolves to an array of User objects.
  */
 export async function getUsers(forSchoolId?: string): Promise<User[]> {
@@ -233,26 +308,50 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
     const usersCol = collection(db, 'users');
     let q;
     if (forSchoolId) {
-      console.log(`Fetching users for school: ${forSchoolId}`);
+      console.log(`Fetching users specifically for school: ${forSchoolId}`);
       q = query(usersCol, where('schoolId', '==', forSchoolId));
     } else {
-      console.log("Fetching all users (Superadmin view or no schoolId specified).");
+      // When no schoolId is provided, we fetch ALL users.
+      // The calling context (e.g., the UI) should enforce whether the current user
+      // *should* be allowed to see all users (i.e., if they are superadmin).
+      // This function itself doesn't enforce role-based access to the *list*, only filtering.
+      console.log("Fetching all users (Superadmin view or unfiltered request).");
       q = query(usersCol);
     }
     const userSnapshot = await getDocs(q);
-    const userList = userSnapshot.docs.map(docSnap => {
+    const userListPromises = userSnapshot.docs.map(async (docSnap) => {
       const data = docSnap.data();
+      let schoolName = data.schoolName;
+
+      // Fetch school name if missing and schoolId exists
+      if (data.schoolId && !schoolName) {
+          try {
+              const schoolDoc = await getDoc(doc(db, 'schools', data.schoolId));
+              if (schoolDoc.exists()) {
+                 schoolName = (schoolDoc.data() as School).name;
+              } else {
+                   schoolName = null; // Indicate school not found
+              }
+          } catch (e) {
+              console.warn(`Could not fetch school name for user ${docSnap.id} school ${data.schoolId}`, e);
+              schoolName = null;
+          }
+      }
+
+
       return {
         id: docSnap.id,
         name: data.name || data.displayName || 'N/A',
         email: data.email || 'N/A',
         role: data.role || 'N/A',
         schoolId: data.schoolId ?? null,
-        schoolName: data.schoolName ?? null,
+        schoolName: schoolName ?? (data.schoolId ? 'School Not Found' : null), // Provide feedback if school lookup failed
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
       } as User;
     });
+
+    const userList = await Promise.all(userListPromises);
     console.log(`Fetched ${userList.length} users.`);
     return userList;
   } catch (error: any) {
@@ -262,163 +361,169 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
         return [];
     }
      if (error instanceof FirestoreError && error.code === 'permission-denied') {
-         console.error("Permission denied fetching users.");
-         throw new Error("Permission denied fetching users.");
+         console.error("Permission denied fetching users list. Check Firestore rules for the 'users' collection.");
+         // Depending on app requirements, you might throw or return empty
+         // Throwing is often better to indicate a configuration issue.
+         throw new Error("Permission denied fetching users list.");
      }
-    return []; // Return empty for other errors
+    return []; // Return empty for other unexpected errors
   }
 }
 
 /**
- * Admin action to create a new user profile in Firestore.
- * IMPORTANT: This function DOES NOT create the Firebase Authentication user.
- * The Auth user must be created separately (e.g., manually in Firebase Console).
- * The UID of the Auth user MUST match the `id` returned by this function (which is the Firestore doc ID).
- * @param userData Data for the new user profile (name, email, role, schoolId). ID is omitted as it's generated.
+ * Admin action to create a new user profile (Auth and Firestore).
+ * Creates the Firebase Auth user first, then the Firestore profile using the Auth UID.
+ * @param userData Data for the new user profile (name, email, password, role, schoolId).
  * @param creatingAdminRole The role of the admin performing the action ('superadmin' or 'school_admin').
  * @param creatingAdminSchoolId The school ID of the school admin (required if role is 'school_admin').
  * @returns A promise that resolves to the created User object (Firestore profile).
- * @throws Error on permission issues, duplicate email, or other failures.
+ * @throws Error on permission issues, duplicate email, auth creation failure, or other errors.
  */
-export async function adminCreateUserProfile(userData: Omit<AdminUserFormData, 'id'>, creatingAdminRole: string, creatingAdminSchoolId?: string): Promise<User> {
-  // Permission Checks
-  if (creatingAdminRole !== 'superadmin' && creatingAdminRole !== 'school_admin') {
-    throw new Error("Permission denied: Only admins can create users.");
-  }
-  if (creatingAdminRole === 'school_admin') {
-    if (!creatingAdminSchoolId) {
-      throw new Error("School admin must have a school ID to create users.");
+export async function adminCreateUserProfile(
+    userData: Omit<AdminUserFormData, 'id'>, // Expect password here now
+    creatingAdminRole: string,
+    creatingAdminSchoolId?: string
+): Promise<User> {
+    // --- Permission Checks ---
+    if (creatingAdminRole !== 'superadmin' && creatingAdminRole !== 'school_admin') {
+        throw new Error("Permission denied: Only admins can create users.");
     }
-    if (userData.role === 'school_admin') {
-      throw new Error("School admins cannot create other school admins.");
+    if (!userData.password) {
+        throw new Error("Password is required to create a new user.");
     }
-    // Ensure school admin assigns the user to their own school
-    if (userData.schoolId && userData.schoolId !== creatingAdminSchoolId) {
-       console.warn(`School admin attempting to assign user to different school (${userData.schoolId}). Overriding with admin's school (${creatingAdminSchoolId}).`);
-       userData.schoolId = creatingAdminSchoolId; // Force assignment to admin's school
-    } else if (!userData.schoolId) {
-         userData.schoolId = creatingAdminSchoolId; // Assign to admin's school if not provided
+    if (creatingAdminRole === 'school_admin') {
+        if (!creatingAdminSchoolId) {
+            throw new Error("School admin must have a school ID to create users.");
+        }
+        if (userData.role === 'school_admin') {
+            throw new Error("School admins cannot create other school admins.");
+        }
+        // Ensure school admin assigns the user to their own school
+        if (userData.schoolId && userData.schoolId !== creatingAdminSchoolId) {
+            console.warn(`School admin attempting to assign user to different school (${userData.schoolId}). Overriding with admin's school (${creatingAdminSchoolId}).`);
+            userData.schoolId = creatingAdminSchoolId;
+        } else if (!userData.schoolId) {
+            userData.schoolId = creatingAdminSchoolId;
+        }
     }
-  }
-  // Prevent assigning reserved superadmin email to non-superadmin roles
-   if (userData.email === 'superadmin@example.com' && userData.role !== 'superadmin') { // Note: Superadmin role isn't directly creatable here
-      throw new Error("The email superadmin@example.com is reserved for the superadmin role.");
-   }
-
-
-  // Check for existing user profile with the same email
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('email', '==', userData.email));
-  try {
-      const existingUserSnap = await getDocs(q);
-      if (!existingUserSnap.empty) {
-        throw new Error(`A user profile with email ${userData.email} already exists in Firestore.`);
-      }
-  } catch (error: any) {
-      if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
-          throw new Error("Cannot check for existing user: Client is offline.");
-      }
-       if (error instanceof Error && error.message.includes("already exists")) {
-         throw error; // Re-throw specific error
-       }
-      console.error("Error checking for existing user email:", error);
-      throw new Error("Failed to verify email uniqueness.");
-  }
-
-  // Generate Firestore Document ID - This MUST match the Firebase Auth UID you create manually.
-  const newUserDocRef = doc(collection(db, 'users'));
-  const generatedUserId = newUserDocRef.id;
-  console.log(`Generated Firestore ID for new user profile (${userData.email}): ${generatedUserId}. Ensure Firebase Auth UID matches this ID.`);
-
-   // Prevent accidental creation with the superadmin UID via this function
-    if (generatedUserId === 'superadmin') {
-        throw new Error("Cannot programmatically create a profile with the reserved 'superadmin' UID. This must be handled via login flow.");
+    // Prevent assigning reserved superadmin email/role unless it's the specific login flow
+    if (userData.email === 'superadmin@example.com') {
+        throw new Error("Cannot create user with the reserved superadmin email via this function.");
     }
 
 
-  const profileToCreate: Omit<User, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
-    name: userData.name,
-    email: userData.email,
-    role: userData.role,
-    schoolId: userData.schoolId ?? null, // Ensure null if not provided
-    schoolName: null, // Initialize as null, fetch below if schoolId exists
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-
-  // Validate and fetch schoolName if schoolId is provided
-  if (profileToCreate.schoolId) {
+    // --- 1. Create Firebase Auth User ---
+    let authUser: FirebaseUser;
     try {
-        const schoolDoc = await getDoc(doc(db, 'schools', profileToCreate.schoolId));
-        if (schoolDoc.exists()) {
-            profileToCreate.schoolName = (schoolDoc.data() as School).name;
-            console.log(`Assigning user ${userData.email} to school: ${profileToCreate.schoolName} (${profileToCreate.schoolId})`);
-        } else {
-            // If school admin is creating, this shouldn't happen due to checks above.
-            // If superadmin provides invalid ID:
-             if (creatingAdminRole === 'superadmin') {
-                 console.warn(`Superadmin provided non-existent school ID ${profileToCreate.schoolId} for user ${userData.email}. Proceeding without school assignment.`);
-                 profileToCreate.schoolId = null; // Clear invalid schoolId
-                 profileToCreate.schoolName = null;
-             } else {
-                // This implies school admin's school doesn't exist? Should not happen.
-                 throw new Error(`School with ID ${profileToCreate.schoolId} not found.`);
-             }
+         // IMPORTANT: Client-side SDK usage. Recommend backend function with Admin SDK for production.
+        console.log(`Attempting to create Auth user for ${userData.email} via admin action...`);
+        const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+        authUser = userCredential.user;
+        console.log(`Admin action: Auth user created successfully with UID: ${authUser.uid}`);
+
+        // Prevent accidental creation with the superadmin UID via this function
+        if (authUser.uid === 'superadmin') {
+             // This should ideally not happen if email check is working, but as a safeguard...
+             // Need to delete the wrongly created auth user. This is complex to handle reliably client-side.
+             console.error("CRITICAL: Accidentally created Auth user with reserved 'superadmin' UID. Manual cleanup needed.");
+             // Attempt deletion (might fail due to permissions or needing re-auth)
+             // await deleteUser(authUser); // Requires careful implementation
+             throw new Error("Critical error: Attempted to create profile with reserved 'superadmin' UID.");
         }
-    } catch (e: any) {
-        if (e instanceof FirestoreError && (e.code === 'unavailable' || e.message.includes("offline"))) {
-             throw new Error("Cannot validate school ID: Client is offline.");
+
+        // Set display name
+        try {
+             await updateProfile(authUser, { displayName: userData.name });
+             console.log(`Set display name for Auth user ${authUser.uid}.`);
+        } catch (profileError) {
+             console.warn(`Could not set display name for new Auth user ${authUser.uid}:`, profileError);
         }
-        // Throw other errors during school validation
-        throw new Error(`Failed to validate school: ${e.message}`);
+
+    } catch (error: any) {
+        console.error('Error creating Firebase Auth user via admin action:', error);
+        if (error.code === 'auth/email-already-in-use') {
+            throw new Error(`Authentication failed: The email address ${userData.email} is already in use.`);
+        } else if (error.code === 'auth/weak-password') {
+            throw new Error('Authentication failed: The password is too weak.');
+        } else if (error.code === 'auth/invalid-email') {
+            throw new Error('Authentication failed: The email address is not valid.');
+        }
+        throw new Error(`Failed to create user authentication account: ${error.message}`);
     }
-  } else if (userData.role !== 'superadmin' && creatingAdminRole === 'superadmin') {
-    // Allow superadmin to create users without school, but log warning for non-admin roles.
-     console.warn(`Superadmin creating user ${userData.email} with role ${userData.role} without assigning a school.`);
-     profileToCreate.schoolName = null; // Explicitly set to null
-  } else {
-      profileToCreate.schoolName = null; // Ensure null if no schoolId
-  }
 
+    // --- 2. Prepare and Create Firestore User Profile ---
+    const userDocRef = doc(db, 'users', authUser.uid); // Use Auth UID as Doc ID
+    const profileToCreate: Omit<User, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        schoolId: userData.schoolId ?? null,
+        schoolName: null, // Initialize as null, fetch below
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+    };
 
-  // Create the Firestore document using the generated ID
-  try {
-       // Ensure we don't pass undefined fields explicitly
-      const cleanData = Object.entries(profileToCreate).reduce((acc, [key, value]) => {
-          if (value !== undefined) {
-              acc[key as keyof typeof profileToCreate] = value;
-          } else {
-              // Explicitly set known optional fields to null if undefined
-               if (key === 'schoolId' || key === 'schoolName') {
-                   acc[key as keyof typeof profileToCreate] = null;
-               }
-          }
-          return acc;
-      }, {} as { [key: string]: any }); // Cast to allow serverTimestamp
-
-      await setDoc(newUserDocRef, cleanData);
-  } catch (error: any) {
-       if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
-             throw new Error("Cannot create user profile: Client is offline.");
+    // Fetch schoolName if schoolId is provided
+    if (profileToCreate.schoolId) {
+        try {
+            const schoolDoc = await getDoc(doc(db, 'schools', profileToCreate.schoolId));
+            if (schoolDoc.exists()) {
+                profileToCreate.schoolName = (schoolDoc.data() as School).name;
+                console.log(`Assigning user ${userData.email} to school: ${profileToCreate.schoolName} (${profileToCreate.schoolId})`);
+            } else {
+                console.warn(`Admin provided non-existent school ID ${profileToCreate.schoolId} for user ${userData.email}. Setting school assignment to null.`);
+                profileToCreate.schoolId = null; // Correct invalid ID
+                profileToCreate.schoolName = null;
+            }
+        } catch (e: any) {
+             if (e instanceof FirestoreError && (e.code === 'unavailable' || e.message.includes("offline"))) {
+                 // Decide: block creation or proceed without school name? Block is safer.
+                 throw new Error("Cannot validate school ID: Client is offline.");
+             }
+            console.error(`Failed to validate school ${profileToCreate.schoolId}:`, e);
+            throw new Error(`Failed to validate school information: ${e.message}`);
         }
-      console.error(`Error setting user profile document for ${userData.email}:`, error);
-      throw new Error(`Failed to create Firestore profile: ${error.message}`);
-  }
+    } else {
+         profileToCreate.schoolName = null;
+    }
 
-  // Fetch and return the created profile
-  try {
-      const createdDocSnap = await getDoc(newUserDocRef);
+    // Create the Firestore document
+    try {
+        const cleanData = Object.entries(profileToCreate).reduce((acc, [key, value]) => {
+            if (value !== undefined) {
+                acc[key as keyof typeof profileToCreate] = value;
+            } else if (key === 'schoolId' || key === 'schoolName') {
+                 acc[key as keyof typeof profileToCreate] = null;
+            }
+            return acc;
+        }, {} as { [key: string]: any });
+
+        await setDoc(userDocRef, cleanData); // Use setDoc with the Auth UID
+        console.log(`Successfully created Firestore profile for ${userData.email} with ID ${authUser.uid}`);
+
+    } catch (error: any) {
+        console.error(`Error setting Firestore user profile document for ${userData.email} (UID: ${authUser.uid}):`, error);
+         // Attempt cleanup? Very difficult. Log critical error.
+         console.error(`CRITICAL: Failed to create Firestore profile for Auth user ${authUser.uid}. Manual cleanup likely needed.`);
+         if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+             throw new Error("Cannot create user profile: Client is offline.");
+         }
+         if (error instanceof FirestoreError && error.code === 'permission-denied') {
+            throw new Error("Permission denied creating Firestore profile. Check rules.");
+         }
+        throw new Error(`Failed to create Firestore profile: ${error.message}`);
+    }
+
+    // --- 3. Fetch and Return Created Profile ---
+    // Fetch again to get server timestamps resolved
+    try {
+      const createdDocSnap = await getDoc(userDocRef);
       if (!createdDocSnap.exists()) {
-        throw new Error("Failed to retrieve created user profile.");
+        throw new Error("Failed to retrieve created user profile immediately after creation.");
       }
       const finalData = createdDocSnap.data();
-
-      console.log(`Successfully created Firestore profile for ${finalData.email} with ID ${generatedUserId}`);
-      console.warn(`REMINDER: Manually create Firebase Auth user for ${finalData.email} with UID: ${generatedUserId}`);
-
-
       return {
-        id: generatedUserId, // This is the Firestore document ID
+        id: authUser.uid, // Return the Auth UID
         name: finalData.name,
         email: finalData.email,
         role: finalData.role,
@@ -428,35 +533,33 @@ export async function adminCreateUserProfile(userData: Omit<AdminUserFormData, '
         updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : undefined,
       };
    } catch (error: any) {
-        if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
-             console.error("Failed to retrieve created profile: Client is offline.");
-             // Consider what to return here. Throwing might be best.
-             throw new Error("Failed to retrieve created profile: Client is offline.");
-        }
-       console.error("Error retrieving created profile:", error);
-       throw new Error("Failed to retrieve created profile after saving.");
+        console.error("Error retrieving created profile after saving:", error);
+        // Profile likely exists, but retrieval failed. Return based on input data? Risky.
+        // Throwing is probably best to signal inconsistency.
+       throw new Error("Failed to retrieve complete profile data after creation.");
    }
 }
 
+
 /**
  * Admin action to update an existing user's profile in Firestore.
+ * Does NOT update email or password. Auth details must be updated separately if needed.
  * @param userId The ID (Firebase Auth UID / Firestore Doc ID) of the user profile to update.
- * @param updates Partial data for the user profile (name, role, schoolId). Email cannot be updated here.
+ * @param updates Partial data for the user profile (name, role, schoolId). ID and password are ignored.
  * @param updatingAdminRole Role of the admin performing the action.
  * @param updatingAdminSchoolId School ID of the admin (if school_admin).
  * @returns A promise that resolves to the updated User object.
  * @throws Error on permission issues or other failures.
  */
 export async function adminUpdateUserProfile(userId: string, updates: Partial<AdminUserFormData>, updatingAdminRole: string, updatingAdminSchoolId?: string): Promise<User> {
-  // Permission Checks
-  if (updatingAdminRole !== 'superadmin' && updatingAdminRole !== 'school_admin') {
+  // Permission Checks & Initial Fetch (same as before)
+   if (updatingAdminRole !== 'superadmin' && updatingAdminRole !== 'school_admin') {
     throw new Error("Permission denied: Only admins can update users.");
   }
 
   const userDocRef = doc(db, 'users', userId);
   let existingUserData: User;
 
-  // Fetch existing user data
   try {
       const userSnap = await getDoc(userDocRef);
       if (!userSnap.exists()) {
@@ -481,112 +584,99 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
        throw new Error(`Failed to fetch user profile for update: ${error.message}`);
   }
 
-  // --- Apply Authorization Rules ---
-
-  // Prevent non-superadmins from editing superadmin
-  if (existingUserData.role === 'superadmin' && updatingAdminRole !== 'superadmin') {
+  // --- Apply Authorization Rules --- (same as before)
+   if (existingUserData.role === 'superadmin' && updatingAdminRole !== 'superadmin') {
     throw new Error("Only a superadmin can modify another superadmin's profile.");
   }
-  // Prevent changing UID 'superadmin' role unless current editor is also superadmin
   if (userId === 'superadmin' && updates.role && updates.role !== 'superadmin') {
       throw new Error("The role of the primary superadmin (UID 'superadmin') cannot be changed from 'superadmin'.");
   }
-
-
-  // School Admin Restrictions
   if (updatingAdminRole === 'school_admin') {
     if (!updatingAdminSchoolId) {
          throw new Error("School admin performing update is missing their school ID.");
     }
-    // Allow updating superadmin if they happen to be listed under the school (unlikely but possible)
     if (existingUserData.role !== 'superadmin' && existingUserData.schoolId !== updatingAdminSchoolId) {
       throw new Error("School admins can only update users within their own school.");
     }
-    // Prevent school admins from changing roles to/from admin roles
     if (updates.role && (updates.role === 'school_admin' || updates.role === 'superadmin')) {
          throw new Error("School admins cannot promote users to admin roles.");
     }
     if (existingUserData.role === 'school_admin' && updates.role && updates.role !== 'school_admin') {
          throw new Error("School admins cannot change the role of another school admin.");
     }
-    // Prevent school admins from changing school assignment
      if (updates.schoolId !== undefined && updates.schoolId !== existingUserData.schoolId) {
       throw new Error("School admins cannot change a user's school assignment.");
     }
   }
 
-   // Prevent changing email via this function
-   if (updates.email && updates.email !== existingUserData.email) {
-       console.warn(`Attempted to update email for ${userId}, which is not allowed via adminUpdateUserProfile. Skipping email update.`);
-       delete updates.email;
-   }
-   // Prevent changing the ID
-   if (updates.id) {
-      delete updates.id;
-   }
+   // Ignore attempts to change ID, password, or email via this function
+   delete updates.id;
+   delete updates.password;
+    if (updates.email && updates.email !== existingUserData.email) {
+        console.warn(`Attempted to update email for ${userId} via adminUpdateUserProfile. Ignoring email update.`);
+        delete updates.email;
+    }
+
 
   // --- Prepare Data for Update ---
   const dataToUpdate: { [key: string]: any } = { updatedAt: serverTimestamp() };
+  let needsUpdate = false; // Track if any actual changes are made
 
-  if (updates.name !== undefined && updates.name !== existingUserData.name) dataToUpdate.name = updates.name;
+  if (updates.name !== undefined && updates.name !== existingUserData.name) {
+    dataToUpdate.name = updates.name;
+    needsUpdate = true;
+  }
 
   // Update role if allowed and changed
   if (updates.role && updates.role !== existingUserData.role) {
-     // Check permissions again based on target role and existing role
+     // ... (role change permission logic remains the same as previous version)
      if (existingUserData.role === 'superadmin') {
-        // Should have been caught earlier, but double-check
         if (updatingAdminRole !== 'superadmin') throw new Error("Permission denied to change superadmin role.");
-         // Allow superadmin to demote another superadmin (if not the primary 'superadmin' UID)
          if (userId !== 'superadmin') {
               dataToUpdate.role = updates.role;
-              console.log(`Superadmin demoting user ${userId} to ${updates.role}`);
+              needsUpdate = true;
+              console.log(`Superadmin changing role of user ${userId} to ${updates.role}`);
          } else {
-             // Cannot change primary superadmin role
-              console.warn("Attempted to change role of primary superadmin (UID 'superadmin'). Skipping role update.");
+             console.warn("Attempted to change role of primary superadmin (UID 'superadmin'). Skipping role update.");
          }
      } else if (updates.role === 'school_admin') {
-          // Check if promoter is superadmin
-         if (updatingAdminRole !== 'superadmin') throw new Error("Only superadmins can promote users to School Admin.");
+          if (updatingAdminRole !== 'superadmin') throw new Error("Only superadmins can promote users to School Admin.");
           dataToUpdate.role = updates.role;
+          needsUpdate = true;
           console.log(`Superadmin promoting user ${userId} to School Admin.`);
      } else {
-          // Allow changing between non-admin roles (student, teacher) by authorized admins
           dataToUpdate.role = updates.role;
+          needsUpdate = true;
           console.log(`Updating role for user ${userId} to ${updates.role}`);
      }
   }
 
   // Handle schoolId and schoolName update
   let schoolChanged = false;
-  // Check if schoolId is explicitly being set (could be null or a string)
   if (updates.hasOwnProperty('schoolId') && updates.schoolId !== existingUserData.schoolId) {
-    // Permission check: Only superadmin can change school assignment
-    if (updatingAdminRole !== 'superadmin' && existingUserData.role !== 'superadmin') { // Allow superadmin to change their own non-existent schoolId
+    if (updatingAdminRole !== 'superadmin' && existingUserData.role !== 'superadmin') {
          throw new Error("Only superadmins can change a user's school assignment.");
     }
     schoolChanged = true;
-    dataToUpdate.schoolId = updates.schoolId ?? null; // Store null if updates.schoolId is null or undefined
+    needsUpdate = true; // Mark that an update is needed
+    dataToUpdate.schoolId = updates.schoolId ?? null;
   }
 
-
   if (schoolChanged) {
-    const targetRole = dataToUpdate.role ?? existingUserData.role; // Use updated role if changed
-     // Ensure non-superadmin roles are assigned to a valid school or nullified only by superadmin
-     if (dataToUpdate.schoolId) { // Assigning to a new school or changing school
+    const targetRole = dataToUpdate.role ?? existingUserData.role;
+     if (dataToUpdate.schoolId) {
        try {
          const schoolDoc = await getDoc(doc(db, 'schools', dataToUpdate.schoolId));
          if (schoolDoc.exists()) {
            dataToUpdate.schoolName = (schoolDoc.data() as School).name;
            console.log(`Updating school for user ${userId} to ${dataToUpdate.schoolName} (${dataToUpdate.schoolId})`);
          } else {
-            // If assigning to a non-existent school:
              if(targetRole !== 'superadmin') {
                  throw new Error(`Cannot assign user to non-existent school ID: ${dataToUpdate.schoolId}`);
              }
-             // Allow superadmin role to have non-existent school ID (treat as unassigned)
              console.warn(`Assigning superadmin ${userId} to non-existent school ID ${dataToUpdate.schoolId}. Clearing school name.`);
              dataToUpdate.schoolName = null;
-             dataToUpdate.schoolId = null; // Correct the schoolId to null if school doc doesn't exist
+             dataToUpdate.schoolId = null; // Correct the schoolId to null
          }
        } catch (e: any) {
           if (e instanceof FirestoreError && (e.code === 'unavailable' || e.message.includes("offline"))) {
@@ -594,41 +684,47 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
           }
           throw new Error(`Failed to validate school for update: ${e.message}`);
        }
-     } else { // Clearing school assignment (setting schoolId to null)
-       // Only superadmin can clear school assignment for non-superadmin users
-       if (targetRole !== 'superadmin' && updatingAdminRole !== 'superadmin') {
-           throw new Error("Only superadmins can unassign users from a school.");
-       }
-        // Ensure superadmin role always has null schoolId/Name if cleared
-         if(targetRole === 'superadmin') {
-             dataToUpdate.schoolId = null;
-             dataToUpdate.schoolName = null;
-             console.log(`Ensuring superadmin ${userId} has null school assignment.`);
-         } else {
-             console.log(`Clearing school assignment for user ${userId}`);
-             dataToUpdate.schoolId = null;
-             dataToUpdate.schoolName = null;
-         }
+     } else { // Clearing school assignment
+        if (targetRole !== 'superadmin' && updatingAdminRole !== 'superadmin') {
+            throw new Error("Only superadmins can unassign users from a school.");
+        }
+         dataToUpdate.schoolId = null;
+         dataToUpdate.schoolName = null;
+         console.log(`Clearing school assignment for user ${userId}`);
      }
-  }
+      // Ensure schoolName update doesn't revert if only schoolId changed to null/valid
+      if (dataToUpdate.schoolName === undefined) {
+           // If we changed schoolId but didn't explicitly set schoolName (e.g., to null),
+           // make sure it's explicitly nulled if schoolId is null.
+           if(dataToUpdate.schoolId === null) dataToUpdate.schoolName = null;
+      }
+
+  } // End if (schoolChanged)
 
 
-  // Perform the update only if there are changes other than just updatedAt
-  if (Object.keys(dataToUpdate).length > 1) {
+  // --- Perform Update ---
+  if (needsUpdate) {
     try {
-        // Clean the data before updating (remove undefined)
+        // Clean the data just before updating
          const cleanDataToUpdate = Object.entries(dataToUpdate).reduce((acc, [key, value]) => {
            if (value !== undefined) {
              acc[key as keyof typeof dataToUpdate] = value;
+           } else if (key === 'schoolId' || key === 'schoolName') {
+               // Ensure explicit nulls are kept if they were set
+                acc[key as keyof typeof dataToUpdate] = null;
            }
            return acc;
          }, {} as { [key: string]: any });
+
 
         await updateDoc(userDocRef, cleanDataToUpdate);
         console.log(`User profile updated for ID: ${userId}`, cleanDataToUpdate);
     } catch (error: any) {
         if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
             throw new Error("Cannot update user profile: Client is offline.");
+        }
+        if (error instanceof FirestoreError && error.code === 'permission-denied') {
+           throw new Error("Permission denied updating Firestore profile. Check rules.");
         }
         console.error(`Error updating user profile for ID ${userId}:`, error);
         throw new Error(`Failed to update profile: ${error.message}`);
@@ -637,12 +733,10 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
       console.log(`No actual changes to update for user ID: ${userId}. Skipping Firestore update.`);
   }
 
-
-  // Fetch and return the (potentially unchanged if no fields were modified) profile
+  // Fetch and return the latest profile data
   try {
       const updatedUserSnap = await getDoc(userDocRef);
        if (!updatedUserSnap.exists()) {
-           // This should not happen if the initial fetch succeeded
            throw new Error("Failed to retrieve user profile after update attempt.");
        }
        const finalData = updatedUserSnap.data();
@@ -657,22 +751,22 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
         updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : undefined,
       };
    } catch (error: any) {
-       if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+        if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
             console.error("Failed to retrieve updated profile: Client is offline.");
-            // Consider returning existingUserData or throwing
-            throw new Error("Failed to retrieve updated profile: Client is offline.");
-       }
+            // Return the data we *intended* to write as a fallback, though timestamps might be wrong
+             return { ...existingUserData, ...dataToUpdate, updatedAt: new Date().toISOString() };
+        }
       console.error("Error retrieving updated profile:", error);
       throw new Error("Failed to retrieve updated profile after saving.");
    }
 }
 
 
-// Placeholder - actual superadmin initialization is more about ensuring the Auth user exists
-// and then their profile is created on first login by createUserProfile.
+// Removed the old createUserProfile - it's replaced by adminCreateUserProfile
+// and the syncUserProfileOnLogin logic.
+
+// Placeholder for initialization reminder - actual creation happens via login flow.
 export async function initializeSuperAdmin() {
-    // The createUserProfile function handles creating/updating the Firestore doc
-    // with 'superadmin' role if the logged-in user's UID is 'superadmin'.
-    console.log(`Super Admin Auth user (any email) MUST be created manually in Firebase Console with UID: 'superadmin'.`);
-    console.log(`On first login with these credentials, their Firestore profile will be created/updated with 'superadmin' role.`);
+    console.log(`Super Admin Auth user MUST be created manually in Firebase Console with UID: 'superadmin'. Use any email and a strong password.`);
+    console.log(`On first login with these credentials, their Firestore profile will be created/synced with 'superadmin' role by syncUserProfileOnLogin.`);
 }
