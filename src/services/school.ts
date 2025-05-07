@@ -1,14 +1,13 @@
-
 'use server';
 /**
  * @fileOverview Service functions for managing school data in Firestore.
  */
 
-import { db, auth as firebaseAuth } from '@/lib/firebase'; // Import firebaseAuth
-import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // For creating user
+import { db } from '@/lib/firebase'; 
+import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError, updateDoc } from 'firebase/firestore';
+// import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // For creating user, handled manually
 import { z } from 'zod';
-import { createUserProfile } from './user'; // For creating user profile in Firestore
+import { createUserProfile } from './user'; 
 
 // Zod schema for validating new school data
 export const NewSchoolSchema = z.object({
@@ -38,12 +37,16 @@ export interface School {
    * The creation date of the school record (ISO string format).
    */
   createdAt: string;
+   /**
+   * The last update date of the school record (ISO string format).
+   */
+  updatedAt: string;
   /**
    * Email for the school's primary admin.
    */
-  adminEmail: string; // Made mandatory
+  adminEmail: string; 
   /**
-   * UID of the school's primary admin.
+   * UID of the school's primary admin (Firestore user document ID).
    */
   adminUid?: string;
 }
@@ -55,8 +58,9 @@ interface SchoolFirestoreDoc {
   name: string;
   licenseKey: string;
   createdAt: Timestamp;
-  adminEmail: string; // Made mandatory
-  adminUid?: string;
+  updatedAt: Timestamp;
+  adminEmail: string; 
+  adminUid?: string; // This will be the Firestore document ID of the admin user profile
 }
 
 /**
@@ -69,114 +73,73 @@ function generateLicenseKey(): string {
 }
 
 /**
- * Generates a random temporary password.
- */
-function generateTemporaryPassword(): string {
-  return Math.random().toString(36).slice(-8);
-}
-
-
-/**
- * Asynchronously registers a new school in Firestore and creates an admin user.
- * This function is a server action.
+ * Asynchronously registers a new school in Firestore and creates a placeholder admin user profile.
+ * The Firebase Auth user for the admin MUST be created manually.
  * @param schoolData The data for the new school (name, adminEmail).
  * @returns A promise that resolves to the registered School object.
- * @throws Error if registration fails (e.g., admin email already in use by another admin).
+ * @throws Error if registration fails.
  */
 export async function registerSchool(schoolData: NewSchoolData): Promise<School> {
-  // Check if an admin with this email already exists for another school
   try {
     const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('email', '==', schoolData.adminEmail), where('role', '==', 'school_admin'));
-    const existingAdminSnap = await getDocs(q);
+    // Check if a user profile with this email already exists and is a school_admin for *another* school
+    const qAdmin = query(usersRef, where('email', '==', schoolData.adminEmail), where('role', '==', 'school_admin'));
+    const existingAdminSnap = await getDocs(qAdmin);
 
     if (!existingAdminSnap.empty) {
-      // Check if any of these existing admins are tied to a *different* school or no school (which shouldn't happen for school_admin)
-      // This check can be more robust, e.g. by checking if the schoolId matches if we were updating.
-      // For new registration, any existing 'school_admin' with this email is a conflict.
-      throw new Error(`An admin account with email ${schoolData.adminEmail} already exists for another school.`);
+       // A school_admin profile with this email already exists.
+       // This is only a conflict if it's for a different school or if we strictly enforce one school_admin profile per email.
+       // For now, we'll throw an error to prevent duplicates.
+       throw new Error(`An admin profile with email ${schoolData.adminEmail} already exists.`);
     }
+    // Also check if a superadmin exists with this email
+     const qSuperAdmin = query(usersRef, where('email', '==', schoolData.adminEmail), where('role', '==', 'superadmin'));
+     const existingSuperAdminSnap = await getDocs(qSuperAdmin);
+     if (!existingSuperAdminSnap.empty) {
+       throw new Error(`Cannot assign ${schoolData.adminEmail} as school admin; it's already a superadmin email.`);
+     }
+
+
   } catch (error: any) {
+      if (error instanceof Error && error.message.includes("already exists")) {
+          throw error; // Re-throw specific error
+      }
       console.error("Error during admin email existence check:", error);
       throw new Error("Failed to check existing admin. Please try again.");
   }
 
-  const tempPassword = generateTemporaryPassword();
-  let adminUserUid: string | undefined;
+  const batch = writeBatch(db);
+  const newSchoolDocRef = doc(collection(db, 'schools'));
+  const adminProfileDocRef = doc(collection(db, 'users')); // Generate ID for the profile doc
+
+  const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
+    name: schoolData.name,
+    licenseKey: generateLicenseKey(),
+    adminEmail: schoolData.adminEmail,
+    adminUid: adminProfileDocRef.id, // Link school to the admin profile ID
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  batch.set(newSchoolDocRef, schoolDbData);
+
+  // Create the Firestore user profile document for the admin
+  const adminProfileData: Omit<User, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
+      name: `${schoolData.name} Admin`, // Default name
+      email: schoolData.adminEmail,
+      role: 'school_admin',
+      schoolId: newSchoolDocRef.id,
+      schoolName: schoolData.name,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+  };
+  batch.set(adminProfileDocRef, adminProfileData);
 
   try {
-    // Create Firebase Auth user for the admin
-    // This part needs to be handled carefully. Firebase Admin SDK is needed for direct user creation on the server.
-    // If running this purely client-side (which 'use server' actions CAN be), this approach is problematic without Admin SDK.
-    // For now, we assume this 'use server' can somehow make privileged calls or this is a conceptual step.
-    // A more secure flow for client-side initiation:
-    // 1. Superadmin creates school doc.
-    // 2. Superadmin triggers a Firebase Function (or separate admin process) to create the auth user.
-    // For simplicity, let's proceed as if it's possible, but acknowledge the limitation.
-    
-    // --> Placeholder for actual Firebase Auth user creation.
-    // --> In a real app, use Firebase Admin SDK in a Cloud Function triggered after school doc creation.
-    // --> Or, if superadmin is creating this via an admin panel where they are already authenticated with sufficient privileges.
-
-    // Conceptual:
-    // const userCredential = await createUserWithEmailAndPassword(firebaseAuth, schoolData.adminEmail, tempPassword);
-    // adminUserUid = userCredential.user.uid;
-    // await sendPasswordResetEmail(firebaseAuth, schoolData.adminEmail); // Or send temp password via other means
-
-    // Since direct auth user creation from a Next.js server action without Admin SDK is complex/insecure for general users,
-    // we'll simulate the UID part and focus on Firestore data.
-    // In a real scenario, the adminUid would come from the actual auth user creation.
-    // We will skip Firebase Auth user creation here and only create the Firestore school document and user profile document.
-    // The superadmin would need to manually create the auth user or use a separate secure mechanism.
-    console.warn("Skipping Firebase Auth user creation in registerSchool. This needs a secure server-side implementation (e.g., Firebase Functions with Admin SDK).");
-
-
-    const batch = writeBatch(db);
-
-    const newSchoolDocRef = doc(collection(db, 'schools'));
-    const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'adminUid'> & { createdAt: any, adminUid?: string } = {
-      name: schoolData.name,
-      licenseKey: generateLicenseKey(),
-      adminEmail: schoolData.adminEmail,
-      // adminUid will be set after Auth user is created (conceptually)
-      createdAt: serverTimestamp(),
-    };
-    
-    // If adminUserUid was successfully created (conceptually)
-    // schoolDbData.adminUid = adminUserUid; 
-    
-    batch.set(newSchoolDocRef, schoolDbData);
-    
-    // Create user profile for the admin (conceptually, if adminUserUid was available)
-    // if (adminUserUid) {
-    //   await createUserProfile(
-    //     { uid: adminUserUid, email: schoolData.adminEmail, displayName: `${schoolData.name} Admin` } as any, // Cast as any to fit FirebaseUser type for createUserProfile
-    //     { role: 'school_admin', schoolId: newSchoolDocRef.id, schoolName: schoolData.name }
-    //   );
-    // } else {
-       // If auth user creation is skipped, still create a user profile doc with a placeholder or pre-defined ID
-       // This is NOT ideal. The UID should come from Firebase Auth.
-       const placeholderAdminId = `admin_${newSchoolDocRef.id}`; // Example placeholder
-       const adminProfileRef = doc(db, 'users', placeholderAdminId);
-       batch.set(adminProfileRef, {
-         id: placeholderAdminId,
-         email: schoolData.adminEmail,
-         displayName: `${schoolData.name} Admin`,
-         role: 'school_admin',
-         schoolId: newSchoolDocRef.id,
-         schoolName: schoolData.name,
-         // Note: This user won't be able to log in without a corresponding Firebase Auth account.
-       });
-       schoolDbData.adminUid = placeholderAdminId; // Link the placeholder ID
-       // Update the school doc with the placeholder adminUid
-       batch.update(newSchoolDocRef, { adminUid: placeholderAdminId });
-
-    // }
-
-
     await batch.commit();
+    console.log(`School ${schoolData.name} registered with ID: ${newSchoolDocRef.id}`);
+    console.log(`Admin profile created for ${schoolData.adminEmail} with Firestore ID: ${adminProfileDocRef.id}`);
+    console.warn(`IMPORTANT: Manually create Firebase Auth user for ${schoolData.adminEmail} with UID matching the Firestore profile ID: ${adminProfileDocRef.id}`);
     
-    // Fetch the created school document to get the server timestamp
     const registeredDocSnap = await getDoc(newSchoolDocRef);
     if (!registeredDocSnap.exists()) {
         throw new Error("Failed to retrieve newly registered school after batch write.");
@@ -188,14 +151,15 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
       name: finalSchoolData.name,
       licenseKey: finalSchoolData.licenseKey,
       createdAt: finalSchoolData.createdAt.toDate().toISOString(),
+      updatedAt: finalSchoolData.updatedAt.toDate().toISOString(),
       adminEmail: finalSchoolData.adminEmail,
       adminUid: finalSchoolData.adminUid,
     };
 
   } catch (error: any) {
-    console.error('Error registering school:', error);
+    console.error('Error committing school and admin profile batch:', error);
     if (error instanceof Error && error.message.includes("already exists")) {
-        throw error; // Re-throw specific error
+        throw error; 
     }
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
       throw new Error("Permission denied while registering school. Ensure you have the necessary permissions.");
@@ -209,7 +173,6 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
 
 /**
  * Asynchronously retrieves all schools from Firestore.
- * This function is a server action.
  * @returns A promise that resolves to an array of School objects.
  */
 export async function getSchools(): Promise<School[]> {
@@ -223,6 +186,7 @@ export async function getSchools(): Promise<School[]> {
         name: data.name,
         licenseKey: data.licenseKey,
         createdAt: data.createdAt.toDate().toISOString(),
+        updatedAt: data.updatedAt.toDate().toISOString(),
         adminEmail: data.adminEmail,
         adminUid: data.adminUid,
       };
@@ -232,13 +196,22 @@ export async function getSchools(): Promise<School[]> {
     console.error('Error fetching schools:', error);
      if (error instanceof FirestoreError && error.code === 'permission-denied') {
       console.error("Permission denied while fetching schools. Ensure you have the necessary permissions.");
-      return []; // Or throw an error, depending on desired behavior
+      return []; 
     }
      if (error instanceof Error && error.message.includes("offline")) {
       console.error("Failed to fetch schools because the client is offline.");
       return [];
     }
-    return [];
+     if (error instanceof Error && error.message.includes("Missing or insufficient permissions")) {
+      console.error("Firestore rules error: Missing or insufficient permissions to fetch schools.");
+       // Depending on policy, you might want to throw an error here
+       // to signal the caller that the operation failed due to permissions.
+       throw new Error("Permission denied fetching schools.");
+      // return []; // Or return empty if that's acceptable
+    }
+    // Rethrow other errors or return empty based on policy
+    // throw error; // Rethrow unexpected errors
+    return []; // Default to empty on other errors
   }
 }
 
@@ -260,6 +233,7 @@ export async function getSchoolById(id: string): Promise<School | null> {
         name: data.name,
         licenseKey: data.licenseKey,
         createdAt: data.createdAt.toDate().toISOString(),
+        updatedAt: data.updatedAt.toDate().toISOString(),
         adminEmail: data.adminEmail,
         adminUid: data.adminUid,
       };
@@ -279,4 +253,3 @@ export async function getSchoolById(id: string): Promise<School | null> {
     return null;
   }
 }
-

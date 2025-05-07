@@ -1,4 +1,3 @@
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,7 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { createUserProfile, getUserProfile } from '@/services/user'; // To create profile if not exists
+import { createUserProfile, getUserProfile, User } from '@/services/user'; 
+import { FirestoreError } from 'firebase/firestore';
 
 const loginFormSchema = z.object({
   email: z.string().email('Invalid email address.'),
@@ -49,28 +49,58 @@ export function LoginForm() {
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const firebaseUser = userCredential.user;
 
-      // Check if user profile exists in Firestore, if not, create a basic one
-      let userProfile = await getUserProfile(firebaseUser.uid);
-      if (!userProfile) {
-        // Create a default profile. Role might be set later or by a superadmin.
-        // For now, a 'member' or 'student' role, or based on email domain.
-        // This logic can be enhanced.
-        userProfile = await createUserProfile(firebaseUser, { role: 'student' }); 
+      // Attempt to get or create user profile
+      let userProfile: User | null = null;
+      try {
+        userProfile = await getUserProfile(firebaseUser.uid);
+        if (!userProfile) {
+          console.log(`No profile found for UID ${firebaseUser.uid}, attempting to create...`);
+          // Pass necessary info, createUserProfile determines role (e.g., superadmin based on email)
+          userProfile = await createUserProfile(firebaseUser, {}); 
+          console.log('Profile created:', userProfile);
+        } else {
+           // If profile exists, ensure role is updated if it's the superadmin logging in
+           if (firebaseUser.email === 'superadmin@example.com' && userProfile.role !== 'superadmin') {
+              console.log(`Updating role for ${firebaseUser.email} to superadmin.`);
+              userProfile = await createUserProfile(firebaseUser, { role: 'superadmin' }); // This effectively updates the role via merge: true
+           }
+           console.log('Profile found:', userProfile);
+        }
+      } catch (profileError: any) {
+          console.error('Error getting/creating user profile:', profileError);
+           if (profileError instanceof Error && profileError.message.includes("offline")) {
+                toast({
+                    title: 'Login Partially Successful (Offline)',
+                    description: "Logged in, but couldn't fetch your full profile as the app is offline. Some features might be limited.",
+                    variant: 'default', // Or a custom 'warning' variant
+                    duration: 5000,
+                });
+                 // Allow login even if profile fetch fails offline, but currentUser in context might be null/stale initially
+                 router.push('/'); 
+                 return; // Exit onSubmit early
+            }
+          // If profile creation/retrieval fails for other reasons, treat it as a login failure
+          throw new Error(`Failed to load user profile: ${profileError.message}`);
       }
-      
+
       toast({
         title: 'Login Successful',
         description: `Welcome back, ${userProfile?.name || firebaseUser.email}!`,
       });
-      // const redirectPath = localStorage.getItem('redirectAfterLogin') || '/';
-      // localStorage.removeItem('redirectAfterLogin');
-      router.push('/'); // Redirect to dashboard after login
+      router.push('/'); // Redirect to dashboard after successful login and profile handling
+
     } catch (error: any) {
       console.error('Error logging in:', error);
-      let errorMessage = 'Login failed. Please check your credentials.';
+      let errorMessage = 'Login failed. Please try again.';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = 'Invalid email or password.';
+      } else if (error instanceof FirestoreError && error.message.includes("offline")) {
+         // This case might be caught by the inner try/catch now, but keep as fallback
+         errorMessage = "Login failed: Could not connect to the database. Please check your connection.";
+      } else if (error.message.includes('Failed to load user profile')) {
+          errorMessage = error.message; // Use the specific profile error
       }
+      
       toast({
         title: 'Login Failed',
         description: errorMessage,
@@ -135,9 +165,6 @@ export function LoginForm() {
         <CardContent className="mt-0 pt-0 text-center text-sm">
           <p className="text-muted-foreground">
             Don&apos;t have an account? Contact admin.
-            {/* <Link href="/signup" className="font-medium text-primary hover:underline">
-              Sign Up
-            </Link> */}
           </p>
         </CardContent>
     </Card>

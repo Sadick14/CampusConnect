@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { ReactNode} from 'react';
@@ -7,6 +6,7 @@ import { onAuthStateChanged, signOut as firebaseSignOut, type User as FirebaseUs
 import { auth } from '@/lib/firebase';
 import { getUserProfile, type User as AppUser } from '@/services/user';
 import { useRouter, usePathname } from 'next/navigation';
+import { FirestoreError } from 'firebase/firestore';
 
 interface AuthContextType {
   currentUser: AppUser | null;
@@ -27,9 +27,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setFirebaseUser(user);
+      let profile: AppUser | null = null;
       if (user) {
-        const userProfile = await getUserProfile(user.uid);
-        setCurrentUser(userProfile);
+        try {
+          profile = await getUserProfile(user.uid);
+          setCurrentUser(profile);
+        } catch (error) {
+          console.error("Error fetching user profile on auth state change:", error);
+           if (error instanceof FirestoreError && error.message.includes("offline")) {
+              console.warn("AuthProvider: Could not fetch profile while offline. User is authenticated but profile data may be stale.");
+              // Decide if you want to set currentUser to null or keep potentially stale data
+              // Setting to null might trigger redirects if AuthGuard strictly checks currentUser
+              // Keeping stale data might show outdated info.
+              // For now, let's keep the last known state if available, otherwise null.
+              // setCurrentUser(currentUser); // Keep existing state if any
+              // Or set null to force re-fetch when online:
+               setCurrentUser(null); // Set to null when offline fetch fails
+           } else {
+              // Handle other errors fetching profile (e.g., permissions)
+               setCurrentUser(null); // Treat other errors as profile not available
+           }
+        }
       } else {
         setCurrentUser(null);
       }
@@ -37,17 +55,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, []); // Removed currentUser from dependency array to avoid re-running unnecessarily
 
   useEffect(() => {
-    if (!loading && !currentUser && pathname !== '/login' && !pathname.startsWith('/_next/')) {
-      // Allow access to /login page itself
-      // Also prevent redirection for Next.js internal paths
-      if (pathname !== '/login') {
-         // router.push('/login'); // Handled by AuthGuard now
-      }
+    // This effect handles redirection and is now mostly handled by AuthGuard
+    // Keeping it simple here, AuthGuard has the primary responsibility.
+    if (!loading && !firebaseUser && pathname !== '/login' && !pathname.startsWith('/_next/')) {
+       console.log("AuthContext: No Firebase user detected, redirecting might be needed.");
+       // AuthGuard will handle the actual push to /login
     }
-  }, [currentUser, loading, router, pathname]);
+     if (!loading && firebaseUser && !currentUser && pathname !== '/login' && !pathname.startsWith('/_next/')) {
+        // This state can happen if auth is OK but profile fetch failed (e.g., offline, permissions)
+        console.warn("AuthContext: Firebase user exists, but AppUser profile is null. Waiting for profile or potential issue.");
+        // Don't redirect here, let AuthGuard handle it, but log the state.
+        // If profile fetch consistently fails, it might indicate a Firestore issue or rules problem.
+     }
+
+  }, [firebaseUser, currentUser, loading, router, pathname]);
 
 
   const logout = async () => {
@@ -61,7 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Error signing out: ", error);
       // Handle error (e.g., show toast)
     } finally {
-      setLoading(false);
+      // Ensure loading is set to false even on error, though redirect might happen first
+      setLoading(false); 
     }
   };
 
