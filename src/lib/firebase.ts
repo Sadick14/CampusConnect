@@ -65,8 +65,13 @@ function initializeDbInternal(): Promise<Firestore> {
                 console.log('Attempting to initialize Firestore with multi-tab persistence...');
                 // Try initialize first - might throw if already called or service unavailable
                 dbInstance = initializeFirestore(app, {
-                    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-                    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+                    localCache: persistentLocalCache({ 
+                        tabManager: persistentMultipleTabManager(),
+                        // Specify cache size within the persistentLocalCache options
+                        cacheSizeBytes: CACHE_SIZE_UNLIMITED 
+                    }),
+                    // Remove cacheSizeBytes from the top level
+                    // cacheSizeBytes: CACHE_SIZE_UNLIMITED 
                 });
                 console.log('Firestore initialized successfully with multi-tab persistence.');
             } catch (multiTabError: any) {
