@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,9 +19,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sparkles, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { generateTermReport, type GenerateTermReportInput } from '@/ai/flows/generate-report';
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 
 const reportFormSchema = z.object({
   schoolId: z.string().min(1, "School ID is required."),
@@ -37,6 +39,7 @@ export default function AiReportsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
   const { toast } = useToast();
+  const { currentUser } = useAuth(); // Get current user
 
   const form = useForm<ReportFormValues>({
     resolver: zodResolver(reportFormSchema),
@@ -49,6 +52,14 @@ export default function AiReportsPage() {
       teacherFeedback: "",
     },
   });
+
+  // Pre-fill schoolId if user is school_admin and has a schoolId
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'school_admin' && currentUser.schoolId) {
+      form.setValue('schoolId', currentUser.schoolId);
+    }
+  }, [currentUser, form]);
+
 
   async function onSubmit(values: ReportFormValues) {
     setIsLoading(true);
@@ -99,7 +110,11 @@ export default function AiReportsPage() {
                     <FormItem>
                       <FormLabel>School ID</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter school ID (e.g., SCH001)" {...field} />
+                        <Input 
+                          placeholder="Enter school ID (e.g., SCH001)" 
+                          {...field} 
+                          disabled={currentUser?.role === 'school_admin' && !!currentUser?.schoolId} // Disable if school admin
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

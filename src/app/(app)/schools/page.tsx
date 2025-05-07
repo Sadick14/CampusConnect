@@ -47,6 +47,7 @@ export default async function SchoolsPage() {
                 <TableRow>
                   <TableHead>School Name</TableHead>
                   <TableHead>License Key</TableHead>
+                  <TableHead>Admin Email</TableHead>
                   <TableHead>Date Registered</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -58,6 +59,7 @@ export default async function SchoolsPage() {
                     <TableCell>
                       <Badge variant="secondary">{school.licenseKey}</Badge>
                     </TableCell>
+                     <TableCell>{school.adminEmail || 'N/A'}</TableCell>
                     <TableCell>{format(new Date(school.createdAt), "PPP")}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" disabled>Manage</Button> {/* Placeholder for future actions */}

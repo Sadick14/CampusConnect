@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,7 +31,7 @@ export default function RegisterSchoolPage() {
     resolver: zodResolver(NewSchoolSchema),
     defaultValues: {
       name: "",
-      // adminEmail: "", // For future use
+      adminEmail: "", 
     },
   });
 
@@ -40,14 +41,14 @@ export default function RegisterSchoolPage() {
       await registerSchool(values);
       toast({
         title: "School Registered",
-        description: `${values.name} has been successfully registered.`,
+        description: `${values.name} has been successfully registered. An admin account has been created with the provided email.`,
       });
       router.push("/schools");
     } catch (error) {
       console.error("Error registering school:", error);
       toast({
         title: "Registration Failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
+        description: error instanceof Error ? error.message : "An unknown error occurred. Ensure the admin email is not already in use by another school admin.",
         variant: "destructive",
       });
     } finally {
@@ -59,7 +60,7 @@ export default function RegisterSchoolPage() {
     <div>
       <PageHeader
         title="Register New School"
-        description="Add a new school to the CampusConnect Pro system."
+        description="Add a new school to the CampusConnect Pro system. This will also create an initial admin account for the school."
       />
       <Card className="w-full max-w-2xl mx-auto shadow-lg">
         <CardHeader>
@@ -67,7 +68,7 @@ export default function RegisterSchoolPage() {
             <PlusCircle className="h-5 w-5" /> School Registration Form
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new school.
+            Fill in the details below to register a new school and its administrator.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -89,25 +90,22 @@ export default function RegisterSchoolPage() {
                   </FormItem>
                 )}
               />
-              {/* 
-              // For future use: Admin Email
               <FormField
                 control={form.control}
                 name="adminEmail"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>School Admin Email (Optional)</FormLabel>
+                    <FormLabel>School Admin Email</FormLabel>
                     <FormControl>
                       <Input type="email" placeholder="Enter admin email (e.g., admin@greenvalley.edu)" {...field} />
                     </FormControl>
                     <FormDescription>
-                      The email address for the primary administrator of this school.
+                      The email address for the primary administrator of this school. A new user account will be created with this email and a temporary password sent (or a default one set).
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              */}
             </CardContent>
             <CardFooter>
               <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
