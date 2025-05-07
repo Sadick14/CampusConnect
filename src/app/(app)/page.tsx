@@ -1,4 +1,3 @@
-
 'use client';
 
 import { PageHeader } from "@/components/common/page-header";
@@ -63,7 +62,7 @@ export default function HomePage() {
         title="Dashboard" 
         description={welcomeMessage()}
       />
-      {loading &amp;&amp; (
+      {loading && (
          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, index) => (
             <Card key={index} className="shadow-md">
@@ -78,7 +77,7 @@ export default function HomePage() {
           ))}
         </div>
       )}
-      {!loading &amp;&amp; currentUser &amp;&amp; (
+      {!loading && currentUser && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredDashboardItems.map((item) => (
             <Link href={item.href} key={item.title} passHref>
@@ -97,7 +96,7 @@ export default function HomePage() {
           ))}
         </div>
       )}
-       {!loading &amp;&amp; !currentUser &amp;&amp; (
+       {!loading && !currentUser && (
          <Card>
            <CardHeader><CardTitle>Please Log In</CardTitle></CardHeader>
            <CardContent><p>You need to be logged in to view the dashboard content.</p></CardContent>

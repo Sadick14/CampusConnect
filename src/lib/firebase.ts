@@ -21,12 +21,16 @@ const settings: PersistentSettings = {
   tabManager: persistentMultipleTabManager
 };
 
-// Initialize Firestore with persistence disabled
-const db = getFirestore(app);
-initializeFirestore(app, {
-  localCacheSettings: settings
-});
+let db;
 
+if (getApps().length > 0) {
+  db = getFirestore();
+} else {
+  // Initialize Firestore with persistence disabled
+  db = initializeFirestore(app, {
+    localCacheSettings: settings
+  });
+}
 
 const auth = getAuth(app);
 

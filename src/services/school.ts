@@ -134,7 +134,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
     const batch = writeBatch(db);
 
     const newSchoolDocRef = doc(collection(db, 'schools'));
-    const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'adminUid'> &amp; { createdAt: any, adminUid?: string } = {
+    const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'adminUid'> & { createdAt: any, adminUid?: string } = {
       name: schoolData.name,
       licenseKey: generateLicenseKey(),
       adminEmail: schoolData.adminEmail,
@@ -194,13 +194,13 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
 
   } catch (error: any) {
     console.error('Error registering school:', error);
-    if (error instanceof Error &amp;&amp; error.message.includes("already exists")) {
+    if (error instanceof Error && error.message.includes("already exists")) {
         throw error; // Re-throw specific error
     }
-    if (error instanceof FirestoreError &amp;&amp; error.code === 'permission-denied') {
+    if (error instanceof FirestoreError && error.code === 'permission-denied') {
       throw new Error("Permission denied while registering school. Ensure you have the necessary permissions.");
     }
-    if (error instanceof Error &amp;&amp; error.message.includes("offline")) {
+    if (error instanceof Error && error.message.includes("offline")) {
       throw new Error("Failed to register school because the client is offline.");
     }
     throw new Error(`Failed to register school. Please try again. ${error.message}`);
@@ -230,11 +230,11 @@ export async function getSchools(): Promise<School[]> {
     return schoolList;
   }  catch (error: any) {
     console.error('Error fetching schools:', error);
-     if (error instanceof FirestoreError &amp;&amp; error.code === 'permission-denied') {
+     if (error instanceof FirestoreError && error.code === 'permission-denied') {
       console.error("Permission denied while fetching schools. Ensure you have the necessary permissions.");
       return []; // Or throw an error, depending on desired behavior
     }
-     if (error instanceof Error &amp;&amp; error.message.includes("offline")) {
+     if (error instanceof Error && error.message.includes("offline")) {
       console.error("Failed to fetch schools because the client is offline.");
       return [];
     }
@@ -268,14 +268,15 @@ export async function getSchoolById(id: string): Promise<School | null> {
     }
   } catch (error: any) {
     console.error(`Error fetching school with ID ${id}:`, error);
-     if (error instanceof FirestoreError &amp;&amp; error.code === 'permission-denied') {
+     if (error instanceof FirestoreError && error.code === 'permission-denied') {
       console.error("Permission denied while fetching school. Ensure you have the necessary permissions.");
       return null;
     }
-     if (error instanceof Error &amp;&amp; error.message.includes("offline")) {
+     if (error instanceof Error && error.message.includes("offline")) {
       console.error("Failed to fetch school because the client is offline.");
       return null;
     }
     return null;
   }
 }
+
