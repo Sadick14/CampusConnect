@@ -3,19 +3,11 @@
  * @fileOverview Service functions for managing school data in Firestore.
  */
 
-import { db } from '@/lib/firebase'; 
+import { db } from '@/lib/firebase';
 import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError, updateDoc } from 'firebase/firestore';
 // import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // For creating user, handled manually
-import { z } from 'zod';
-import { createUserProfile } from './user'; 
-
-// Zod schema for validating new school data
-export const NewSchoolSchema = z.object({
-  name: z.string().min(3, 'School name must be at least 3 characters long.'),
-  adminEmail: z.string().email('Invalid email address for school admin.'),
-});
-export type NewSchoolData = z.infer<typeof NewSchoolSchema>;
-
+import type { User } from './user'; // Import User type if needed for relationships
+import type { NewSchoolData } from '@/schemas/school'; // Import from the new schema file
 
 /**
  * Represents a school as stored and retrieved.
@@ -44,7 +36,7 @@ export interface School {
   /**
    * Email for the school's primary admin.
    */
-  adminEmail: string; 
+  adminEmail: string;
   /**
    * UID of the school's primary admin (Firestore user document ID).
    */
@@ -59,7 +51,7 @@ interface SchoolFirestoreDoc {
   licenseKey: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  adminEmail: string; 
+  adminEmail: string;
   adminUid?: string; // This will be the Firestore document ID of the admin user profile
 }
 
@@ -112,6 +104,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
   const newSchoolDocRef = doc(collection(db, 'schools'));
   const adminProfileDocRef = doc(collection(db, 'users')); // Generate ID for the profile doc
 
+  // Explicitly define the structure for the database write, ensuring timestamps are handled by serverTimestamp
   const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
     name: schoolData.name,
     licenseKey: generateLicenseKey(),
@@ -132,14 +125,29 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
   };
-  batch.set(adminProfileDocRef, adminProfileData);
+   // Clean data to avoid undefined values for Firestore
+  const cleanAdminProfileData = Object.entries(adminProfileData).reduce((acc, [key, value]) => {
+    if (value !== undefined) {
+        acc[key as keyof typeof adminProfileData] = value;
+    } else {
+        // Set undefined optional fields to null explicitly for Firestore
+        if (key === 'schoolId' || key === 'schoolName') {
+             acc[key as keyof typeof adminProfileData] = null;
+        }
+    }
+    return acc;
+  }, {} as { [key: string]: any }); // Use a generic object type initially
+
+
+  batch.set(adminProfileDocRef, cleanAdminProfileData);
+
 
   try {
     await batch.commit();
     console.log(`School ${schoolData.name} registered with ID: ${newSchoolDocRef.id}`);
     console.log(`Admin profile created for ${schoolData.adminEmail} with Firestore ID: ${adminProfileDocRef.id}`);
     console.warn(`IMPORTANT: Manually create Firebase Auth user for ${schoolData.adminEmail} with UID matching the Firestore profile ID: ${adminProfileDocRef.id}`);
-    
+
     const registeredDocSnap = await getDoc(newSchoolDocRef);
     if (!registeredDocSnap.exists()) {
         throw new Error("Failed to retrieve newly registered school after batch write.");
@@ -159,7 +167,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
   } catch (error: any) {
     console.error('Error committing school and admin profile batch:', error);
     if (error instanceof Error && error.message.includes("already exists")) {
-        throw error; 
+        throw error;
     }
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
       throw new Error("Permission denied while registering school. Ensure you have the necessary permissions.");
@@ -196,11 +204,14 @@ export async function getSchools(): Promise<School[]> {
     console.error('Error fetching schools:', error);
      if (error instanceof FirestoreError && error.code === 'permission-denied') {
       console.error("Permission denied while fetching schools. Ensure you have the necessary permissions.");
-      return []; 
+      // Decide how to handle this - throw, return empty, etc.
+      // Throwing might be better to indicate failure clearly.
+      throw new Error("Permission denied fetching schools.");
+      // return [];
     }
-     if (error instanceof Error && error.message.includes("offline")) {
-      console.error("Failed to fetch schools because the client is offline.");
-      return [];
+     if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+      console.warn("Failed to fetch schools because the client is offline. Returning empty list.");
+      return []; // Or throw an error indicating offline status
     }
      if (error instanceof Error && error.message.includes("Missing or insufficient permissions")) {
       console.error("Firestore rules error: Missing or insufficient permissions to fetch schools.");
@@ -211,7 +222,8 @@ export async function getSchools(): Promise<School[]> {
     }
     // Rethrow other errors or return empty based on policy
     // throw error; // Rethrow unexpected errors
-    return []; // Default to empty on other errors
+     console.error("An unexpected error occurred while fetching schools.");
+     return []; // Default to empty on other errors
   }
 }
 
@@ -246,8 +258,8 @@ export async function getSchoolById(id: string): Promise<School | null> {
       console.error("Permission denied while fetching school. Ensure you have the necessary permissions.");
       return null;
     }
-     if (error instanceof Error && error.message.includes("offline")) {
-      console.error("Failed to fetch school because the client is offline.");
+     if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+      console.warn(`Failed to fetch school with ID ${id} because the client is offline.`);
       return null;
     }
     return null;

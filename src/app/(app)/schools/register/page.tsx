@@ -19,7 +19,8 @@ import { PlusCircle, Loader2, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { registerSchool, NewSchoolSchema, type NewSchoolData, type School } from '@/services/school';
+import { registerSchool, type School } from '@/services/school';
+import { NewSchoolSchema, type NewSchoolData } from '@/schemas/school'; // Updated import path
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function RegisterSchoolPage() {
@@ -31,7 +32,7 @@ export default function RegisterSchoolPage() {
     resolver: zodResolver(NewSchoolSchema),
     defaultValues: {
       name: "",
-      adminEmail: "", 
+      adminEmail: "",
     },
   });
 
