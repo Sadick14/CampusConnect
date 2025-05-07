@@ -1,7 +1,8 @@
 import { LoginForm } from '@/components/auth/login-form';
 import { Logo } from '@/components/logo'; 
-import { ShieldAlert } from 'lucide-react';
+import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function LoginPage() {
   return (
@@ -27,6 +28,17 @@ export default function LoginPage() {
             </h1>
         </div>
       </div>
+
+      <Alert variant="destructive" className="w-full max-w-md mb-6 shadow-lg">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Action Required: Firebase Configuration</AlertTitle>
+        <AlertDescription>
+          Please ensure you have created a <code className="font-mono bg-muted px-1 rounded">.env</code> file in the root of your project and filled in your Firebase project credentials (API Key, Auth Domain, Project ID, etc.).
+          These are required for Firebase services, including authentication, to function correctly. The app will not work without them.
+          Example <code className="font-mono bg-muted px-1 rounded">.env</code> content can be found in the project's README or documentation.
+        </AlertDescription>
+      </Alert>
+
       <LoginForm />
       
       <Card className="w-full max-w-md shadow-xl mt-6 border-primary border-2">
@@ -39,7 +51,7 @@ export default function LoginPage() {
            <span>To use the Super Admin account, you <strong className="text-destructive-foreground bg-destructive px-1 rounded">MUST FIRST MANUALLY CREATE</strong> this user in your Firebase project:</span>
             <ol className="list-decimal list-inside mt-2 space-y-1 bg-muted/50 p-3 rounded border border-dashed border-muted-foreground/50">
               <li>Go to Firebase Console → Authentication → Users → Add user.</li>
-              <li>You can use any email (e.g., <code className="bg-muted px-1 rounded text-sm">superadmin@example.com</code> or your own <code className="bg-muted px-1 rounded text-sm">issakasaddick14@gmail.com</code>) and set a password.</li>
+              <li>You can use any email (e.g., <code className="bg-muted px-1 rounded text-sm">superadmin@example.com</code> or your own email like <code className="bg-muted px-1 rounded text-sm">issakasaddick14@gmail.com</code>) and set a password.</li>
                <li>
                 <strong>Crucially, set the User UID to exactly <code className="bg-destructive text-destructive-foreground px-1 rounded font-mono">superadmin</code></strong>. This specific UID links the Auth user to the superadmin role in the system.
                 </li>
