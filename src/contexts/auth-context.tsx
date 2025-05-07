@@ -4,7 +4,7 @@
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User as FirebaseUser } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, getDb } from '@/lib/firebase'; // Import getDb instead of db
 import { getUserProfile, syncUserProfileOnLogin, type User as AppUser } from '@/services/user'; // Import syncUserProfileOnLogin
 import { useRouter, usePathname } from 'next/navigation';
 import { FirestoreError } from 'firebase/firestore';
@@ -32,6 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let profile: AppUser | null = null;
        if (fbUser) {
          try {
+           // Ensure DB is initialized before Firestore operations
+           const db = await getDb(); 
            // Try to get existing profile first (might be stale if just updated)
            const existingProfile = await getUserProfile(fbUser.uid);
            // Sync handles creation/update/role assignment, including school details
@@ -45,6 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // setCurrentUser(currentUser); // Keep existing state if any (might be null) - Risky if login needs fresh data
               // For login, better to show an error or prevent proceeding without profile
               setCurrentUser(null); // Clear profile if sync fails offline during login/refresh
+           } else if (error instanceof Error && error.message.includes("firestore has not been registered")) {
+                console.error("Firestore component not registered. Retrying DB initialization.");
+                // Potentially retry getDb() or show a critical error message
+                 setCurrentUser(null);
            } else {
                console.error("Critical error during profile sync/fetch. Logging out.", error);
                setCurrentUser(null);
@@ -124,3 +130,4 @@ export function useAuth() {
   }
   return context;
 }
+

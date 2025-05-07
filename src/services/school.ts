@@ -4,90 +4,18 @@
  * @fileOverview Service functions for managing school data in Firestore.
  */
 
-import { db, auth, storage } from '@/lib/firebase'; // Import storage
+import { getDb, auth, storage } from '@/lib/firebase'; // Import getDb, storage
 import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError, updateDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'; // Import storage functions
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Import auth functions
-import type { User } from './user'; // Import User type if needed for relationships
-import { NewSchoolData } from '@/schemas/school'; // Import from the schema file
-import { z } from 'zod';
-
-/**
- * Represents a school as stored and retrieved.
- */
-export interface School {
-  /**
-   * The unique identifier of the school (Firestore document ID).
-   */
-  id: string;
-  /**
-   * The name of the school.
-   */
-  name: string;
-  /**
-   * A generated license key for the school.
-   */
-  licenseKey: string;
-  /**
-   * The creation date of the school record (ISO string format).
-   */
-  createdAt: string;
-   /**
-   * The last update date of the school record (ISO string format).
-   */
-  updatedAt: string;
-  /**
-   * Email for the school's primary admin.
-   */
-  adminEmail: string;
-  /**
-   * UID of the school's primary admin (Firebase Auth UID / Firestore user document ID).
-   */
-  adminUid: string; // Changed to mandatory string
-  /**
-   * Optional physical address of the school.
-   */
-  address?: string | null;
-   /**
-    * Optional contact phone number for the school.
-    */
-  phone?: string | null;
-  /**
-   * Optional website URL for the school.
-   */
-  website?: string | null;
-  /**
-   * Optional URL for the school's logo image stored in Firebase Storage.
-   */
-  logoUrl?: string | null;
-}
-
-/**
- * Represents the structure of a school document in Firestore.
- */
-interface SchoolFirestoreDoc {
-  name: string;
-  licenseKey: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-  adminEmail: string;
-  adminUid: string; // Firebase Auth UID
-  address?: string | null;
-  phone?: string | null;
-  website?: string | null;
-  logoUrl?: string | null;
-}
-
-// Zod schema for updating school profile information
-export const UpdateSchoolProfileSchema = z.object({
-  name: z.string().min(3, 'School name must be at least 3 characters long.').optional(), // Name might be editable later
-  address: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
-  website: z.string().url('Invalid website URL.').or(z.literal('')).optional().nullable(), // Allow empty string or null
-  // logoUrl is handled separately via file upload
-});
-
-export type UpdateSchoolProfileData = z.infer<typeof UpdateSchoolProfileSchema>;
+// Import schemas and types from the dedicated file
+import { 
+    type School, 
+    type SchoolFirestoreDoc, 
+    type NewSchoolData, 
+    type UpdateSchoolProfileData 
+} from '@/schemas/school';
+import type { User } from '@/schemas/user'; // Import User type from its schema file
 
 
 /**
@@ -142,6 +70,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
     }
 
     // --- Create/Update Firestore Documents using Batch ---
+    const db = await getDb(); // Get DB instance
     const batch = writeBatch(db);
     const newSchoolDocRef = doc(collection(db, 'schools')); // Auto-generate school ID
     const adminProfileDocRef = doc(db, 'users', adminAuthUid); // Use Auth UID as Firestore doc ID
@@ -163,26 +92,24 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
     batch.set(newSchoolDocRef, schoolDbData);
 
     // 3. Prepare Admin User Profile Data (Create or Merge)
-    const adminProfileData: Partial<Omit<User, 'id'>> & { createdAt?: any, updatedAt: any } = {
+    // Explicitly type the structure for the user profile document
+    const adminProfileData = {
         name: `${schoolData.name} Admin`, // Set display name
         email: schoolData.adminEmail,
         role: 'school_admin',
         schoolId: newSchoolDocRef.id, // Link to the new school ID
         schoolName: schoolData.name,
+        schoolLogoUrl: null, // Initially null
         updatedAt: serverTimestamp(),
         createdAt: serverTimestamp(), // Let Firestore handle this on creation
+        // Ensure other potential User fields are explicitly null or omitted if not relevant
+        class: null,
+        parentContact: null,
     };
 
-    // Clean data to avoid undefined values
-    const cleanAdminProfileData = Object.entries(adminProfileData).reduce((acc, [key, value]) => {
-        if (value !== undefined) {
-            acc[key as keyof typeof adminProfileData] = value;
-        }
-        return acc;
-    }, {} as { [key: string]: any });
-
     // Use set with merge: true to create OR update (in case profile somehow pre-existed, unlikely here)
-    batch.set(adminProfileDocRef, cleanAdminProfileData, { merge: true });
+    batch.set(adminProfileDocRef, adminProfileData, { merge: true });
+
 
     // --- Commit Batch ---
     try {
@@ -236,6 +163,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
  */
 export async function getSchools(): Promise<School[]> {
   try {
+    const db = await getDb(); // Get DB instance
     const schoolsCol = collection(db, 'schools');
     const schoolSnapshot = await getDocs(schoolsCol);
     const schoolList = schoolSnapshot.docs.map(docSnap => {
@@ -283,6 +211,7 @@ export async function getSchools(): Promise<School[]> {
  */
 export async function getSchoolById(id: string): Promise<School | null> {
  try {
+    const db = await getDb(); // Get DB instance
     const schoolDocRef = doc(db, 'schools', id);
     const schoolSnap = await getDoc(schoolDocRef);
 
@@ -335,6 +264,7 @@ export async function updateSchoolProfile(
   logoFile: File | null,
   currentAdminUid: string
 ): Promise<School> {
+  const db = await getDb(); // Get DB instance
   const schoolDocRef = doc(db, 'schools', schoolId);
 
   try {
@@ -352,11 +282,12 @@ export async function updateSchoolProfile(
       updatedAt: serverTimestamp(),
     };
 
-    // Add provided fields to updateData if they exist
-    if (data.address !== undefined) updateData.address = data.address;
-    if (data.phone !== undefined) updateData.phone = data.phone;
-    if (data.website !== undefined) updateData.website = data.website;
-    if (data.name !== undefined) updateData.name = data.name; // Allow name update if provided
+    // Add provided fields to updateData if they exist and are defined (handle null/undefined explicitly)
+     if (data.hasOwnProperty('address')) updateData.address = data.address ?? null;
+     if (data.hasOwnProperty('phone')) updateData.phone = data.phone ?? null;
+     if (data.hasOwnProperty('website')) updateData.website = data.website ?? null;
+     if (data.hasOwnProperty('name') && data.name !== undefined) updateData.name = data.name; // Allow name update if provided
+
 
     // 2. Handle Logo Upload (if provided)
     let newLogoUrl: string | null = existingSchoolData.logoUrl ?? null;

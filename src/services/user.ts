@@ -1,73 +1,19 @@
 
+'use server';
 /**
  * @fileOverview Service functions for managing user data.
  */
 import { doc, getDoc, setDoc, collection, getDocs, query, where, updateDoc, serverTimestamp, Timestamp, FirestoreError } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth'; // Keep FirebaseUser type
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Import auth functions
-import { db, auth } from '@/lib/firebase';
-import type { School } from './school'; // Assuming School type is available
-import { z } from 'zod';
-
-/**
- * Represents a user in the system.
- */
-export interface User {
-  /**
-   * The unique identifier of the user (Firebase Auth UID / Firestore Doc ID).
-   */
-  id: string;
-  /**
-   * The display name of the user.
-   */
-  name: string; // Typically displayName
-  /**
-   * The email of the user.
-   */
-  email: string | null;
-  /**
-   * The role of the user (e.g., 'superadmin', 'school_admin', 'teacher', 'student').
-   */
-  role: string;
-  /**
-   * The ID of the school the user is associated with (optional). Stored as null if not associated.
-   */
-  schoolId?: string | null;
-  /**
-   * The name of the school the user is associated with (optional, denormalized).
-   */
-  schoolName?: string | null;
-   /**
-    * The URL of the associated school's logo (optional, denormalized).
-    */
-  schoolLogoUrl?: string | null; // Added school logo URL
-  /**
-   * ISO string representation of the creation date.
-   */
-  createdAt?: string;
-  /**
-   * ISO string representation of the last update date.
-   */
-  updatedAt?: string;
-}
-
-// Zod schema for validating user data when created/edited by an admin
-// Now includes password for creation.
-export const AdminUserFormSchema = z.object({
-  id: z.string().optional(), // Firestore Doc ID, present when editing.
-  name: z.string().min(2, "Name must be at least 2 characters."),
-  email: z.string().email("Invalid email address."),
-  password: z.string().min(8, "Password must be at least 8 characters.").optional(), // Required for creation, optional for update
-  role: z.enum(['student', 'teacher', 'school_admin'], { // Superadmin role handled separately
-    errorMap: () => ({ message: "Invalid role selected." })
-  }),
-  schoolId: z.string().optional().nullable(), // Allow null or optional string
-}).refine(data => data.id || data.password, { // Password is required if ID is not present (i.e., creating)
-    message: "Password is required when creating a new user.",
-    path: ["password"],
-});
-
-export type AdminUserFormData = z.infer<typeof AdminUserFormSchema>;
+import { getDb, auth } from '@/lib/firebase'; // Import getDb instead of db
+import { getSchoolById, type School } from './school'; // Assuming School type is available (import from service for now, could move School type later)
+// Import schemas and types from the dedicated file
+import { 
+    type User, 
+    type AdminUserFormData, 
+    type StudentWithContact 
+} from '@/schemas/user';
 
 
 /**
@@ -81,6 +27,7 @@ export async function getUserProfile(uid: string): Promise<User | null> {
       return null;
   }
   try {
+    const db = await getDb(); // Get DB instance
     const userDocRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userDocRef);
 
@@ -92,13 +39,12 @@ export async function getUserProfile(uid: string): Promise<User | null> {
       // If schoolId exists, try fetching school details to potentially update denormalized fields
       if (data.schoolId) {
         try {
-            const schoolDocRef = doc(db, 'schools', data.schoolId);
-            const schoolSnap = await getDoc(schoolDocRef);
-            if (schoolSnap.exists()) {
-              const schoolData = schoolSnap.data() as School; // Use updated School interface
+            // Fetch school data (assuming getSchoolById is async and handles its own db connection)
+            const schoolData = await getSchoolById(data.schoolId);
+            if (schoolData) {
               schoolName = schoolData.name;
-              schoolLogoUrl = schoolData.logoUrl; // Get latest logo URL from school doc
-              
+              schoolLogoUrl = schoolData.logoUrl;
+
               // Check if denormalized fields need updating on the user doc
               const updates: { schoolName?: string | null, schoolLogoUrl?: string | null } = {};
               if (schoolName !== data.schoolName) updates.schoolName = schoolName ?? null;
@@ -144,6 +90,9 @@ export async function getUserProfile(uid: string): Promise<User | null> {
         schoolLogoUrl: schoolLogoUrl, // Use fetched/updated value
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+        // Include student-specific fields if they exist
+        class: data.class ?? null,
+        parentContact: data.parentContact ?? null,
       };
     } else {
       console.warn(`No profile found for user UID: ${uid} in 'users' collection.`);
@@ -153,6 +102,8 @@ export async function getUserProfile(uid: string): Promise<User | null> {
     console.error(`Error fetching user profile for UID ${uid}:`, error);
     if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
         console.warn("getUserProfile: Failed to get user profile because the client is offline.");
+        // Attempt to return potentially stale data if offline? Risky.
+        // For now, return null when offline fetch fails.
         return null;
     }
      if (error instanceof FirestoreError && error.code === 'permission-denied') {
@@ -169,97 +120,97 @@ export async function getUserProfile(uid: string): Promise<User | null> {
  * @param firebaseUser The Firebase Auth user object.
  * @param existingProfileData Optional: If profile was fetched *before* calling this.
  * @returns Promise resolving to the User profile from Firestore.
+ * @throws Error if profile creation/update fails critically.
  */
 export async function syncUserProfileOnLogin(
   firebaseUser: FirebaseUser,
   existingProfileData?: User | null
 ): Promise<User> {
+    const db = await getDb(); // Get DB instance
     const userDocRef = doc(db, 'users', firebaseUser.uid);
     let needsWrite = false;
     let schoolDataFetched: School | null = null;
 
-    let profileDataToSave: Partial<User> & { updatedAt: any, createdAt?: any } = {
-        updatedAt: serverTimestamp(),
+    // Initialize with values from existing profile or defaults
+    let profileDataToSave: Partial<User> & { updatedAt?: any, createdAt?: any } = {
+        ...(existingProfileData || {}), // Start with existing data or empty object
+        id: firebaseUser.uid, // Ensure ID is always the auth UID
+        updatedAt: serverTimestamp(), // Always update timestamp
     };
 
-    let currentRole = existingProfileData?.role;
-    let currentSchoolId = existingProfileData?.schoolId;
-    // School name and logo will be fetched if schoolId exists
 
     // --- 1. Fetch School Info if user has schoolId (and not superadmin) ---
+    const currentSchoolId = profileDataToSave.schoolId; // Use ID from initial object
     if (currentSchoolId && firebaseUser.uid !== 'superadmin') {
       try {
-        schoolDataFetched = await getSchoolById(currentSchoolId);
+        schoolDataFetched = await getSchoolById(currentSchoolId); // This now uses getDb internally
         if (!schoolDataFetched) {
           console.warn(`User ${firebaseUser.uid} has schoolId ${currentSchoolId}, but school not found. Clearing school association.`);
-          currentSchoolId = null; // Clear invalid ID
+          profileDataToSave.schoolId = null;
+          profileDataToSave.schoolName = null;
+          profileDataToSave.schoolLogoUrl = null;
+          needsWrite = true;
         }
       } catch (e) {
         console.error(`Error fetching school ${currentSchoolId} during user sync:`, e);
-        // Decide: proceed without school info or throw? Proceeding might be okay for login.
+        // Keep existing school info but log error, or clear? Clearing is safer.
+        profileDataToSave.schoolId = null;
+        profileDataToSave.schoolName = null;
+        profileDataToSave.schoolLogoUrl = null;
+        needsWrite = true;
       }
     }
 
-    // --- 2. Determine Role (Superadmin override) ---
+    // --- 2. Determine/Verify Role (Superadmin override) ---
     if (firebaseUser.uid === 'superadmin') {
-        if (currentRole !== 'superadmin' || currentSchoolId !== null) {
+        if (profileDataToSave.role !== 'superadmin' || profileDataToSave.schoolId !== null) {
             profileDataToSave.role = 'superadmin';
             profileDataToSave.schoolId = null;
             profileDataToSave.schoolName = null;
             profileDataToSave.schoolLogoUrl = null;
             needsWrite = true;
         }
-        currentRole = 'superadmin';
-        currentSchoolId = null;
-        schoolDataFetched = null; // Superadmin has no school data
-    } else if (!currentRole) {
+    } else if (!profileDataToSave.role) {
         profileDataToSave.role = 'student'; // Default role if missing
-        currentRole = 'student';
         needsWrite = true;
-    } else {
-        profileDataToSave.role = currentRole; // Keep existing role
     }
+    // If role exists, keep it unless overridden above
 
     // --- 3. Sync Basic Info (Name, Email) ---
-    const authName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous';
-    const existingName = existingProfileData?.name;
-    if (!existingProfileData || authName !== existingName) {
-       if (!existingName || existingName === 'Anonymous User' || existingName === 'Unnamed User') {
-           profileDataToSave.name = authName;
-           needsWrite = true;
-       } else if (!profileDataToSave.name) {
-           profileDataToSave.name = existingName;
-       }
-    } else if (!profileDataToSave.name) {
-         profileDataToSave.name = existingName;
+    const authName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Anonymous User';
+    if (profileDataToSave.name !== authName) {
+        // Only overwrite if profile name is default/empty or auth name is explicitly set
+        if (!profileDataToSave.name || profileDataToSave.name === 'Anonymous User' || profileDataToSave.name === 'Unnamed User' || firebaseUser.displayName) {
+            profileDataToSave.name = authName;
+            needsWrite = true;
+        }
     }
 
-    if (!existingProfileData || firebaseUser.email !== existingProfileData?.email) {
+    if (profileDataToSave.email !== firebaseUser.email) {
         profileDataToSave.email = firebaseUser.email;
         needsWrite = true;
-    } else if (!profileDataToSave.email) {
-        profileDataToSave.email = existingProfileData?.email;
     }
 
-     // --- 4. Set/Sync School Details ---
-     profileDataToSave.schoolId = currentSchoolId ?? null; // Use the possibly corrected ID
+     // --- 4. Set/Sync School Details based on fetched data (if applicable) ---
+     if (firebaseUser.uid !== 'superadmin') {
+         const currentSchoolName = schoolDataFetched?.name ?? null;
+         const currentLogoUrl = schoolDataFetched?.logoUrl ?? null;
 
-     const currentSchoolName = schoolDataFetched?.name ?? null;
-     const currentLogoUrl = schoolDataFetched?.logoUrl ?? null;
-
-     if (currentSchoolName !== existingProfileData?.schoolName) {
-         profileDataToSave.schoolName = currentSchoolName;
-         needsWrite = true;
-     } else if (!profileDataToSave.hasOwnProperty('schoolName')) { // Ensure field is set
-          profileDataToSave.schoolName = existingProfileData?.schoolName ?? null;
+         if (profileDataToSave.schoolName !== currentSchoolName) {
+             profileDataToSave.schoolName = currentSchoolName;
+             needsWrite = true;
+         }
+         if (profileDataToSave.schoolLogoUrl !== currentLogoUrl) {
+             profileDataToSave.schoolLogoUrl = currentLogoUrl;
+             needsWrite = true;
+         }
+          // Ensure schoolId reflects fetched state (could have been cleared if school not found)
+         if (profileDataToSave.schoolId !== (schoolDataFetched?.id ?? null)) {
+              profileDataToSave.schoolId = schoolDataFetched?.id ?? null;
+              needsWrite = true;
+         }
      }
 
-     if (currentLogoUrl !== existingProfileData?.schoolLogoUrl) {
-         profileDataToSave.schoolLogoUrl = currentLogoUrl;
-         needsWrite = true;
-     } else if (!profileDataToSave.hasOwnProperty('schoolLogoUrl')) { // Ensure field is set
-          profileDataToSave.schoolLogoUrl = existingProfileData?.schoolLogoUrl ?? null;
-     }
 
     // --- 5. Add createdAt timestamp if creating new profile ---
     if (!existingProfileData) {
@@ -271,21 +222,37 @@ export async function syncUserProfileOnLogin(
     // --- 6. Perform Write only if necessary ---
     if (needsWrite) {
         try {
-             const cleanData = Object.entries(profileDataToSave).reduce((acc, [key, value]) => {
-                 acc[key as keyof typeof profileDataToSave] = value === undefined ? null : value; // Convert undefined to null
-                 return acc;
+             // Clean the data: Remove undefined keys, convert specific undefined values to null if needed
+             const cleanDataToWrite = Object.entries(profileDataToSave).reduce((acc, [key, value]) => {
+                if (value !== undefined) {
+                    // Firestore handles serverTimestamp() correctly, others should be actual values or null
+                     acc[key as keyof typeof profileDataToSave] = value;
+                } else if (['schoolId', 'schoolName', 'schoolLogoUrl', 'class', 'parentContact', 'email', 'createdAt', 'updatedAt'].includes(key)) {
+                    // Explicitly set potentially undefined optional fields to null if they ended up undefined
+                    acc[key as keyof typeof profileDataToSave] = null;
+                }
+                 // Skip 'id' field for Firestore document data
+                 if (key === 'id') return acc;
+
+                return acc;
              }, {} as { [key: string]: any });
 
-            await setDoc(userDocRef, cleanData, { merge: true });
+
+            await setDoc(userDocRef, cleanDataToWrite, { merge: true });
             console.log(`User profile synced/created for UID: ${firebaseUser.uid}`);
         } catch (error: any) {
             console.error(`Error syncing user profile for UID ${firebaseUser.uid}:`, error);
              if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
                  console.error("syncUserProfileOnLogin failed: Client is offline.");
-                 if (existingProfileData) return existingProfileData; // Return stale data if possible
-                 throw new Error(`Failed to sync user profile (offline): ${error.message}`);
+                 // Cannot guarantee profile creation/update offline, throw specific error
+                 throw new Error(`Failed to create/update user profile because the client is offline.`);
              }
-            throw new Error(`Failed to sync user profile: ${error.message}`);
+            // Handle specific errors like invalid data
+             if (error.message.includes("invalid data") || error.message.includes("Unsupported field value")) {
+                console.error("Firestore write failed due to invalid data:", cleanDataToWrite);
+                throw new Error(`Failed to save profile due to invalid data: ${error.message}`);
+             }
+            throw new Error(`Failed to create/update user profile: ${error.message}`);
         }
     } else {
          console.log(`User profile for ${firebaseUser.uid} is up-to-date. No sync needed.`);
@@ -297,32 +264,39 @@ export async function syncUserProfileOnLogin(
          const finalSnap = await getDoc(userDocRef);
          if (!finalSnap.exists()) throw new Error("Failed to retrieve profile after sync write.");
          const finalData = finalSnap.data();
+
+         // Ensure all expected fields are present, defaulting to null if missing
          return {
             id: firebaseUser.uid,
-            name: finalData.name,
-            email: finalData.email,
-            role: finalData.role,
+            name: finalData.name || authName, // Fallback name
+            email: finalData.email ?? firebaseUser.email ?? null,
+            role: finalData.role ?? 'student', // Fallback role
             schoolId: finalData.schoolId ?? null,
             schoolName: finalData.schoolName ?? null,
             schoolLogoUrl: finalData.schoolLogoUrl ?? null,
             createdAt: finalData.createdAt instanceof Timestamp ? finalData.createdAt.toDate().toISOString() : undefined,
             updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : undefined,
+            class: finalData.class ?? null,
+            parentContact: finalData.parentContact ?? null,
          };
     } catch (fetchError: any) {
          console.error("Error fetching final profile state after sync:", fetchError);
-          // Fallback: return the data we intended to write/had before, timestamps might be client-side estimates
-          const fallbackData = { ...existingProfileData, ...profileDataToSave };
-          return {
-              id: firebaseUser.uid,
-              name: fallbackData.name!,
-              email: fallbackData.email!,
-              role: fallbackData.role!,
-              schoolId: fallbackData.schoolId ?? null,
-              schoolName: fallbackData.schoolName ?? null,
-              schoolLogoUrl: fallbackData.schoolLogoUrl ?? null,
-              createdAt: fallbackData.createdAt instanceof Timestamp ? fallbackData.createdAt.toDate().toISOString() : fallbackData.createdAt ?? undefined,
-              updatedAt: new Date().toISOString(), // Use current time as best guess
-          };
+         // Fallback: return the data we *intended* to write or had before sync.
+         // Timestamps might be client-side estimates or missing.
+         const fallbackData = { ...existingProfileData, ...profileDataToSave };
+         return {
+             id: firebaseUser.uid,
+             name: fallbackData.name!,
+             email: fallbackData.email!,
+             role: fallbackData.role!,
+             schoolId: fallbackData.schoolId ?? null,
+             schoolName: fallbackData.schoolName ?? null,
+             schoolLogoUrl: fallbackData.schoolLogoUrl ?? null,
+             createdAt: fallbackData.createdAt instanceof Timestamp ? fallbackData.createdAt.toDate().toISOString() : undefined,
+             updatedAt: new Date().toISOString(), // Best guess
+             class: fallbackData.class ?? null,
+             parentContact: fallbackData.parentContact ?? null,
+         };
     }
 }
 
@@ -336,6 +310,7 @@ export async function syncUserProfileOnLogin(
  */
 export async function getUsers(forSchoolId?: string): Promise<User[]> {
   try {
+    const db = await getDb(); // Get DB instance
     const usersCol = collection(db, 'users');
     let q;
     if (forSchoolId) {
@@ -356,13 +331,25 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
           try {
               const schoolDoc = await getDoc(doc(db, 'schools', data.schoolId));
               if (schoolDoc.exists()) {
-                 const schoolDetails = schoolDoc.data() as School;
-                 schoolName = schoolDetails.name ?? schoolName; // Use fetched if available
-                 schoolLogoUrl = schoolDetails.logoUrl ?? schoolLogoUrl;
+                 // Use getSchoolById to potentially trigger updates if needed elsewhere
+                 const schoolDetails = await getSchoolById(data.schoolId);
+                 if(schoolDetails) {
+                      schoolName = schoolDetails.name ?? schoolName; // Use fetched if available
+                      schoolLogoUrl = schoolDetails.logoUrl ?? schoolLogoUrl;
+                 } else {
+                      schoolName = null;
+                      schoolLogoUrl = null;
+                 }
                  // Optionally trigger an update to the user doc if data was missing/stale
+                 if (schoolName !== data.schoolName || schoolLogoUrl !== data.schoolLogoUrl) {
+                     updateDoc(docSnap.ref, { schoolName: schoolName ?? null, schoolLogoUrl: schoolLogoUrl ?? null }).catch(e => console.warn("Failed background update", e));
+                 }
               } else {
                    schoolName = null; // Indicate school not found
                    schoolLogoUrl = null;
+                   if (data.schoolName || data.schoolLogoUrl) {
+                      updateDoc(docSnap.ref, { schoolName: null, schoolLogoUrl: null }).catch(e => console.warn("Failed background update", e));
+                   }
               }
           } catch (e) {
               console.warn(`Could not fetch school details for user ${docSnap.id} school ${data.schoolId}`, e);
@@ -382,6 +369,8 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
         schoolLogoUrl: schoolLogoUrl ?? null,
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+        class: data.class ?? null,
+        parentContact: data.parentContact ?? null,
       } as User;
     });
 
@@ -414,14 +403,14 @@ export async function adminCreateUserProfile(
     creatingAdminRole: string,
     creatingAdminSchoolId?: string
 ): Promise<User> {
-    // --- Permission Checks --- (Same as previous version)
+    // --- Permission Checks ---
     if (creatingAdminRole !== 'superadmin' && creatingAdminRole !== 'school_admin') {
         throw new Error("Permission denied: Only admins can create users.");
     }
     if (!userData.password) {
         throw new Error("Password is required to create a new user.");
     }
-     // Add stricter check: Ensure schoolId exists if the role requires it
+     // Ensure schoolId exists if the role requires it and assigning correctly
      if ((userData.role === 'teacher' || userData.role === 'student') && !userData.schoolId) {
           if(creatingAdminRole === 'school_admin' && creatingAdminSchoolId) {
                userData.schoolId = creatingAdminSchoolId; // Auto-assign if school admin is creating
@@ -444,7 +433,7 @@ export async function adminCreateUserProfile(
       }
 
 
-    // --- 1. Create Firebase Auth User --- (Same as previous version)
+    // --- 1. Create Firebase Auth User ---
     let authUser: FirebaseUser;
     try {
         console.log(`Attempting to create Auth user for ${userData.email} via admin action...`);
@@ -465,8 +454,10 @@ export async function adminCreateUserProfile(
     }
 
     // --- 2. Prepare and Create Firestore User Profile ---
+    const db = await getDb(); // Get DB instance
     const userDocRef = doc(db, 'users', authUser.uid);
-    const profileToCreate: Omit<User, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
+    // Use Partial<User> to handle potentially missing student fields based on role
+    const profileToCreate: Partial<User> & { createdAt: any, updatedAt: any } = {
         name: userData.name,
         email: userData.email,
         role: userData.role,
@@ -477,12 +468,17 @@ export async function adminCreateUserProfile(
         updatedAt: serverTimestamp(),
     };
 
+    // Add student-specific fields only if the role is student
+     if (userData.role === 'student') {
+       profileToCreate.class = userData.class ?? null;
+       profileToCreate.parentContact = userData.parentContact ?? null;
+     }
+
     // Fetch school details if schoolId is provided
     if (profileToCreate.schoolId) {
         try {
-            const schoolDoc = await getDoc(doc(db, 'schools', profileToCreate.schoolId));
-            if (schoolDoc.exists()) {
-                 const schoolDetails = schoolDoc.data() as School;
+            const schoolDetails = await getSchoolById(profileToCreate.schoolId); // Use existing function
+            if (schoolDetails) {
                  profileToCreate.schoolName = schoolDetails.name ?? null;
                  profileToCreate.schoolLogoUrl = schoolDetails.logoUrl ?? null;
                  console.log(`Assigning user ${userData.email} to school: ${profileToCreate.schoolName} (${profileToCreate.schoolId})`);
@@ -501,12 +497,15 @@ export async function adminCreateUserProfile(
 
     // Create the Firestore document
     try {
-        const cleanData = Object.entries(profileToCreate).reduce((acc, [key, value]) => {
-             acc[key as keyof typeof profileToCreate] = value === undefined ? null : value; // Ensure nulls
+        // Convert undefined values to null before writing
+        const cleanDataToWrite = Object.entries(profileToCreate).reduce((acc, [key, value]) => {
+            // Skip 'id' as it's the document ref ID
+             if (key === 'id') return acc;
+             acc[key as keyof typeof profileToCreate] = value === undefined ? null : value;
             return acc;
         }, {} as { [key: string]: any });
 
-        await setDoc(userDocRef, cleanData);
+        await setDoc(userDocRef, cleanDataToWrite);
         console.log(`Successfully created Firestore profile for ${userData.email} with ID ${authUser.uid}`);
 
     } catch (error: any) {
@@ -516,24 +515,13 @@ export async function adminCreateUserProfile(
         throw new Error(`Failed to create Firestore profile: ${error.message}`);
     }
 
-    // --- 3. Fetch and Return Created Profile --- (Same as previous version)
+    // --- 3. Fetch and Return Created Profile ---
     try {
-      const createdDocSnap = await getDoc(userDocRef);
-      if (!createdDocSnap.exists()) {
+      const createdProfile = await getUserProfile(authUser.uid); // Use reliable fetch function
+      if (!createdProfile) {
         throw new Error("Failed to retrieve created user profile immediately after creation.");
       }
-      const finalData = createdDocSnap.data();
-      return {
-        id: authUser.uid,
-        name: finalData.name,
-        email: finalData.email,
-        role: finalData.role,
-        schoolId: finalData.schoolId ?? null,
-        schoolName: finalData.schoolName ?? null,
-        schoolLogoUrl: finalData.schoolLogoUrl ?? null,
-        createdAt: finalData.createdAt instanceof Timestamp ? finalData.createdAt.toDate().toISOString() : undefined,
-        updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : undefined,
-      };
+      return createdProfile;
    } catch (error: any) {
       console.error("Error retrieving created profile after saving:", error);
       throw new Error("Failed to retrieve complete profile data after creation.");
@@ -556,31 +544,42 @@ export async function adminUpdateUserProfile(
     updatingAdminRole: string,
     updatingAdminSchoolId?: string
 ): Promise<User> {
-  // --- Permission Checks & Initial Fetch --- (Same as previous version)
    if (updatingAdminRole !== 'superadmin' && updatingAdminRole !== 'school_admin') {
     throw new Error("Permission denied: Only admins can update users.");
   }
+  const db = await getDb(); // Get DB instance
   const userDocRef = doc(db, 'users', userId);
   let existingUserData: User;
   try {
-      const userSnap = await getDoc(userDocRef);
-      if (!userSnap.exists()) throw new Error("User profile not found.");
-      // Fetch current data to compare against
-      existingUserData = await getUserProfile(userId) as User; // Reuse getUserProfile to get full current state
-       if (!existingUserData) throw new Error("User profile not found during fetch for update.");
+      // Fetch full current profile using the reliable function
+      const profile = await getUserProfile(userId);
+       if (!profile) throw new Error("User profile not found.");
+       existingUserData = profile;
   } catch (error: any) {
-        // ... error handling ...
+       // ... error handling ...
        throw new Error(`Failed to fetch user profile for update: ${error.message}`);
   }
 
-  // --- Apply Authorization Rules --- (Same as previous version)
+  // --- Apply Authorization Rules ---
    if (existingUserData.role === 'superadmin' && updatingAdminRole !== 'superadmin') {
         throw new Error("Only a superadmin can modify another superadmin's profile.");
    }
    if (userId === 'superadmin' && updates.role && updates.role !== 'superadmin') {
         throw new Error("The role of the primary superadmin (UID 'superadmin') cannot be changed.");
    }
-   // ... other role/school admin checks ...
+    // Prevent school admin from editing users outside their school or editing roles to school_admin
+    if (updatingAdminRole === 'school_admin') {
+        if (!updatingAdminSchoolId) throw new Error("School admin must have a school ID.");
+        if (existingUserData.schoolId !== updatingAdminSchoolId) {
+            throw new Error("School admins can only edit users within their own school.");
+        }
+        if (updates.role && updates.role === 'school_admin') {
+             throw new Error("School admins cannot promote others to school admin.");
+        }
+         if (updates.schoolId && updates.schoolId !== updatingAdminSchoolId) {
+             throw new Error("School admins cannot change a user's school assignment.");
+         }
+    }
 
 
    // --- Prepare Data for Update ---
@@ -593,26 +592,28 @@ export async function adminUpdateUserProfile(
      dataToUpdate.name = updates.name;
      needsUpdate = true;
    }
+   // Email cannot be changed here (managed by Firebase Auth)
 
    // Update role if allowed and changed
    if (updates.role && updates.role !== existingUserData.role) {
-     // ... role change permission logic ...
-     if (/* role change is allowed */ true) { // Replace true with actual permission check logic
-         dataToUpdate.role = updates.role;
-         needsUpdate = true;
-         console.log(`Updating role for user ${userId} to ${updates.role}`);
-          // If changing role TO superadmin, clear school info
-          if (updates.role === 'superadmin') {
-               if (existingUserData.schoolId) { // Check if they had a school before
-                    dataToUpdate.schoolId = null;
-                    dataToUpdate.schoolName = null;
-                    dataToUpdate.schoolLogoUrl = null;
-                    schoolChanged = true; // Indicate change for logging/downstream effects
-               }
-          }
-     } else {
-          throw new Error("Permission denied to change user role.");
-     }
+       dataToUpdate.role = updates.role;
+       needsUpdate = true;
+       console.log(`Updating role for user ${userId} to ${updates.role}`);
+       // If changing role TO superadmin, clear school info
+       if (updates.role === 'superadmin') {
+           if (existingUserData.schoolId) {
+               dataToUpdate.schoolId = null;
+               dataToUpdate.schoolName = null;
+               dataToUpdate.schoolLogoUrl = null;
+               schoolChanged = true; // Mark school changed to ensure denormalized fields are cleared
+           }
+       }
+        // If changing role AWAY from student, clear student-specific fields
+        if (existingUserData.role === 'student' && updates.role !== 'student') {
+            dataToUpdate.class = null;
+            dataToUpdate.parentContact = null;
+            needsUpdate = true;
+        }
    }
 
    // Handle schoolId change - Fetch new school data if ID changes
@@ -627,10 +628,11 @@ export async function adminUpdateUserProfile(
 
      if (newSchoolId) {
        try {
-         newSchoolData = await getSchoolById(newSchoolId);
+         newSchoolData = await getSchoolById(newSchoolId); // Uses getDb internally
          if (!newSchoolData) {
            throw new Error(`Cannot assign user to non-existent school ID: ${newSchoolId}`);
          }
+         // Update schoolName and logoUrl based on fetched data
          dataToUpdate.schoolName = newSchoolData.name ?? null;
          dataToUpdate.schoolLogoUrl = newSchoolData.logoUrl ?? null;
          console.log(`Updating school for user ${userId} to ${dataToUpdate.schoolName} (${newSchoolId})`);
@@ -646,21 +648,54 @@ export async function adminUpdateUserProfile(
        dataToUpdate.schoolLogoUrl = null;
        console.log(`Clearing school assignment for user ${userId}`);
      }
+   } else if (schoolChanged) {
+      // Ensure schoolName and logoUrl are updated even if schoolId didn't change *in this update*,
+      // but was changed by a role update (e.g., to superadmin).
+      dataToUpdate.schoolName = null;
+      dataToUpdate.schoolLogoUrl = null;
    }
+
+
+    // Update student-specific fields if role is student and fields are provided
+    const finalRole = updates.role || existingUserData.role;
+    if (finalRole === 'student') {
+        if (updates.hasOwnProperty('class') && updates.class !== existingUserData.class) {
+             dataToUpdate.class = updates.class ?? null;
+             needsUpdate = true;
+        }
+         // Deep check for parentContact changes
+        if (updates.hasOwnProperty('parentContact')) {
+            const newContact = updates.parentContact ?? null;
+            const oldContact = existingUserData.parentContact ?? null;
+             // Basic check if objects are different; could be more granular
+            if (JSON.stringify(newContact) !== JSON.stringify(oldContact)) {
+                 dataToUpdate.parentContact = newContact;
+                 needsUpdate = true;
+            }
+        }
+    }
 
 
   // --- Perform Update ---
   if (needsUpdate) {
     try {
+         // Convert undefined values to null
          const cleanDataToUpdate = Object.entries(dataToUpdate).reduce((acc, [key, value]) => {
-           acc[key as keyof typeof dataToUpdate] = value === undefined ? null : value; // Ensure nulls
-           return acc;
+            // Skip 'id' and 'password' as they are not part of the Firestore document update schema here
+            if (key === 'id' || key === 'password') return acc;
+            acc[key as keyof typeof dataToUpdate] = value === undefined ? null : value;
+            return acc;
          }, {} as { [key: string]: any });
 
         await updateDoc(userDocRef, cleanDataToUpdate);
         console.log(`User profile updated for ID: ${userId}`, cleanDataToUpdate);
     } catch (error: any) {
-        // ... Firestore error handling ...
+        console.error(`Error updating user profile for ID ${userId}:`, error);
+         if (error instanceof FirestoreError && error.message.includes("invalid data")) {
+             console.error("Firestore update failed due to invalid data:", cleanDataToUpdate);
+             throw new Error(`Failed to update profile due to invalid data: ${error.message}`);
+         }
+        // ... other Firestore error handling ...
         throw new Error(`Failed to update profile: ${error.message}`);
     }
   } else {
@@ -688,19 +723,12 @@ export async function initializeSuperAdmin() {
 }
 
 // Function to get students with parent/guardian contact for a specific school
-// This assumes student documents have a 'parentContact' field (e.g., { email: '...', phone: '...' })
-export interface StudentWithContact extends User {
-  parentContact?: {
-    email?: string | null;
-    phone?: string | null;
-  } | null;
-}
-
 export async function getStudentsWithContacts(schoolId: string): Promise<StudentWithContact[]> {
     if (!schoolId) {
         throw new Error("School ID is required to fetch students.");
     }
     try {
+        const db = await getDb(); // Get DB instance
         const usersCol = collection(db, 'users');
         const q = query(usersCol, where('schoolId', '==', schoolId), where('role', '==', 'student'));
         const snapshot = await getDocs(q);
@@ -715,6 +743,7 @@ export async function getStudentsWithContacts(schoolId: string): Promise<Student
                  schoolId: data.schoolId,
                  schoolName: data.schoolName ?? null, // Include if needed
                  schoolLogoUrl: data.schoolLogoUrl ?? null, // Include if needed
+                 class: data.class ?? null, // Include class
                  parentContact: data.parentContact ?? null, // Extract parent contact
                  createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
                  updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
