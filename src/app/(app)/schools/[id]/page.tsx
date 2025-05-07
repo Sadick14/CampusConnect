@@ -4,9 +4,10 @@ import { getSchoolById, type School } from '@/services/school';
 import { notFound } from 'next/navigation';
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import SchoolCommunication from "@/app/(app)/schools/components/school-communication";
+import SchoolCommunication from "@/components/schools/school-communication"; // Updated path
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2 } from 'lucide-react';
+import { getStudentsWithContacts, type StudentWithContact } from '@/services/user'; // Import function to get students
 
 interface SchoolDetailPageProps {
   params: { id: string };
@@ -24,6 +25,11 @@ function SchoolDetailsSkeleton() {
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-5/6" />
                 <Skeleton className="h-4 w-3/4" />
+                 {/* Add skeletons for new fields */}
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-20 w-20" />
             </CardContent>
         </Card>
     );
@@ -50,7 +56,16 @@ function CommunicationSkeleton() {
 }
 
 async function SchoolDetails({ schoolId }: { schoolId: string }) {
-  const school: School | null = await getSchoolById(schoolId);
+  // Fetch school details and student contacts concurrently
+  const [school, students] = await Promise.all([
+      getSchoolById(schoolId),
+      getStudentsWithContacts(schoolId) // Fetch students with contact info
+  ]).catch(error => {
+       console.error("Error fetching school details or students:", error);
+       // Handle specific errors if needed, otherwise return nulls
+       return [null, [] as StudentWithContact[]];
+  });
+
 
   if (!school) {
     notFound();
@@ -66,18 +81,26 @@ async function SchoolDetails({ schoolId }: { schoolId: string }) {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="text-primary">School Details</CardTitle>
+             {school.logoUrl && (
+                <div className="mt-4 flex justify-center">
+                 <img src={school.logoUrl} alt={`${school.name} Logo`} className="h-24 w-auto object-contain rounded-md border p-1" />
+                </div>
+             )}
           </CardHeader>
-          <CardContent className="space-y-1">
-            <p><strong className="font-medium">License Key:</strong> {school.licenseKey}</p>
-            <p><strong className="font-medium">Admin Email:</strong> {school.adminEmail}</p>
-            <p><strong className="font-medium">Admin User ID:</strong> {school.adminUid || 'Not Set'}</p>
-            <p><strong className="font-medium">Date Registered:</strong> {school.createdAt ? new Date(school.createdAt).toLocaleDateString() : 'N/A'}</p>
-            <p><strong className="font-medium">Last Updated:</strong> {school.updatedAt ? new Date(school.updatedAt).toLocaleDateString() : 'N/A'}</p>
-
+          <CardContent className="space-y-2">
+             <p><strong className="font-medium text-muted-foreground">Name:</strong> {school.name}</p>
+             <p><strong className="font-medium text-muted-foreground">Address:</strong> {school.address || 'Not Set'}</p>
+             <p><strong className="font-medium text-muted-foreground">Phone:</strong> {school.phone || 'Not Set'}</p>
+             <p><strong className="font-medium text-muted-foreground">Website:</strong> {school.website ? <a href={school.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{school.website}</a> : 'Not Set'}</p>
+            <p><strong className="font-medium text-muted-foreground">License Key:</strong> {school.licenseKey}</p>
+            <p><strong className="font-medium text-muted-foreground">Admin Email:</strong> {school.adminEmail}</p>
+            <p><strong className="font-medium text-muted-foreground">Admin User ID:</strong> {school.adminUid || 'Not Set'}</p>
+            <p><strong className="font-medium text-muted-foreground">Date Registered:</strong> {school.createdAt ? new Date(school.createdAt).toLocaleDateString() : 'N/A'}</p>
+            <p><strong className="font-medium text-muted-foreground">Last Updated:</strong> {school.updatedAt ? new Date(school.updatedAt).toLocaleDateString() : 'N/A'}</p>
           </CardContent>
         </Card>
-        {/* Communication component remains client-side */}
-        <SchoolCommunication schoolId={school.id} />
+        {/* Pass schoolId and student data to the communication component */}
+        <SchoolCommunication schoolId={school.id} students={students} />
       </div>
     </>
   );

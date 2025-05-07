@@ -1,3 +1,4 @@
+
 import type { SVGProps } from 'react';
 
 // A simple placeholder SVG logo. Replace with actual logo.
@@ -22,9 +23,11 @@ function AppLogoIcon(props: SVGProps<SVGSVGElement>) {
 
 
 export function Logo() {
+  // Displays the default app logo and name.
+  // School-specific logo/name is handled in AppShell based on context.
   return (
     <div className="flex items-center gap-2 p-2">
-      <AppLogoIcon className="h-8 w-8 text-sidebar-primary" />
+      <AppLogoIcon className="h-8 w-8 text-sidebar-primary group-data-[collapsible=icon]:h-6 group-data-[collapsible=icon]:w-6" />
       <h1 className="text-xl font-bold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
         CampusConnect Pro
       </h1>

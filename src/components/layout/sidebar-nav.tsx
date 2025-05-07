@@ -16,7 +16,7 @@ import {
   CalendarClock,
   Sparkles,
   Bell,
-  // Settings, // Example, can be added back
+  Settings, // Added Settings icon
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -43,16 +43,8 @@ const navItemsConfig = [
   { href: '/timetables', label: 'Timetables', icon: CalendarClock, roles: ['school_admin', 'teacher', 'student'] },
   { href: '/reports', label: 'AI Reports', icon: Sparkles, roles: ['school_admin'] },
   { href: '/notifications', label: 'Notifications', icon: Bell, roles: ['superadmin'] }, // Superadmin only
-  // Example of a submenu
-  // {
-  //   label: 'Settings',
-  //   icon: Settings,
-  //   submenu: [
-  //     { href: '/settings/general', label: 'General', roles: ['superadmin', 'school_admin'] },
-  //     { href: '/settings/profile', label: 'Profile', roles: ['superadmin', 'school_admin', 'teacher', 'student'] },
-  //   ],
-  //   roles: ['superadmin', 'school_admin', 'teacher', 'student']
-  // },
+   // Added Settings link
+   { href: '/settings', label: 'Settings', icon: Settings, roles: ['superadmin', 'school_admin', 'teacher', 'student'] },
 ];
 
 export function SidebarNav() {
@@ -77,8 +69,9 @@ export function SidebarNav() {
           <Link href={item.href} passHref legacyBehavior>
             <SidebarMenuButton
               asChild
-              isActive={pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))}
-              aria-current={(pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))) ? "page" : undefined}
+              // Exact match for dashboard, startsWith for others including /settings
+              isActive={item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)}
+              aria-current={(item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)) ? "page" : undefined}
               tooltip={{ children: item.label, className: "bg-sidebar-accent text-sidebar-accent-foreground" }}
             >
               <a>
@@ -92,4 +85,3 @@ export function SidebarNav() {
     </SidebarMenu>
   );
 }
-

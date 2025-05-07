@@ -18,10 +18,11 @@ import { SidebarNav } from './sidebar-nav';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut, Moon, Sun, UserCircle, ChevronsUpDown, Loader2 } from 'lucide-react'; // Import Loader2
+import { LogOut, Moon, Sun, UserCircle, ChevronsUpDown, Loader2, Settings } from 'lucide-react'; // Added Settings icon
 import { useAuth } from '@/contexts/auth-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast'; // Import useToast
+import Link from 'next/link';
 
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -83,7 +84,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border shadow-lg">
         <SidebarHeader>
-          <Logo />
+          {/* Display School Logo if available and user is school_admin/teacher/student */}
+          {currentUser && currentUser.role !== 'superadmin' && currentUser.schoolLogoUrl ? (
+             <div className="flex items-center gap-2 p-2">
+               <img src={currentUser.schoolLogoUrl} alt={`${currentUser.schoolName || 'School'} Logo`} className="h-10 w-auto object-contain group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8" />
+               <h1 className="text-xl font-bold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
+                  {currentUser.schoolName}
+                </h1>
+             </div>
+          ) : (
+            <Logo /> // Default app logo
+          )}
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarNav />
@@ -118,6 +129,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SidebarTrigger className="md:hidden" />
           <div className="flex-1">
             {/* Placeholder for breadcrumbs or page title */}
+             {/* Display School Name in header if not superadmin */}
+             {currentUser && currentUser.role !== 'superadmin' && currentUser.schoolName && (
+               <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">{currentUser.schoolName}</span>
+             )}
           </div>
           <div className="flex items-center gap-4">
             {authLoading ? (
@@ -127,8 +142,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2 px-2 py-1 h-auto">
                      <Avatar className="h-7 w-7">
-                       {/* Add AvatarImage if user has a photoURL */}
-                       <AvatarFallback>{getUserInitials(currentUser.name)}</AvatarFallback>
+                        {/* Use school logo as avatar fallback if available */}
+                        {currentUser.schoolLogoUrl && currentUser.role !== 'superadmin' ? (
+                           <AvatarImage src={currentUser.schoolLogoUrl} alt="School Logo" className="object-contain"/>
+                        ) : null }
+                        <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.name || 'User'} /> {/* Display user photo if available */}
+                        <AvatarFallback>{getUserInitials(currentUser.name)}</AvatarFallback>
                      </Avatar>
                     <span className="hidden sm:inline">{currentUser.name}</span>
                     <ChevronsUpDown className="h-4 w-4 opacity-50" />
@@ -137,7 +156,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem disabled>Profile (Soon)</DropdownMenuItem>
+                   <Link href="/settings" passHref>
+                      <DropdownMenuItem>
+                         <Settings className="mr-2 h-4 w-4" />
+                         <span>Settings</span>
+                      </DropdownMenuItem>
+                   </Link>
+                   <DropdownMenuItem disabled>Profile (Soon)</DropdownMenuItem>
+                   <DropdownMenuSeparator />
                    <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
                     {isLoggingOut ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

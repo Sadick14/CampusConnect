@@ -4,11 +4,13 @@
  * @fileOverview Service functions for managing school data in Firestore.
  */
 
-import { db, auth } from '@/lib/firebase'; // Import auth
+import { db, auth, storage } from '@/lib/firebase'; // Import storage
 import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError, updateDoc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'; // Import storage functions
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Import auth functions
 import type { User } from './user'; // Import User type if needed for relationships
 import { NewSchoolData } from '@/schemas/school'; // Import from the schema file
+import { z } from 'zod';
 
 /**
  * Represents a school as stored and retrieved.
@@ -42,6 +44,22 @@ export interface School {
    * UID of the school's primary admin (Firebase Auth UID / Firestore user document ID).
    */
   adminUid: string; // Changed to mandatory string
+  /**
+   * Optional physical address of the school.
+   */
+  address?: string | null;
+   /**
+    * Optional contact phone number for the school.
+    */
+  phone?: string | null;
+  /**
+   * Optional website URL for the school.
+   */
+  website?: string | null;
+  /**
+   * Optional URL for the school's logo image stored in Firebase Storage.
+   */
+  logoUrl?: string | null;
 }
 
 /**
@@ -54,7 +72,23 @@ interface SchoolFirestoreDoc {
   updatedAt: Timestamp;
   adminEmail: string;
   adminUid: string; // Firebase Auth UID
+  address?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  logoUrl?: string | null;
 }
+
+// Zod schema for updating school profile information
+export const UpdateSchoolProfileSchema = z.object({
+  name: z.string().min(3, 'School name must be at least 3 characters long.').optional(), // Name might be editable later
+  address: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  website: z.string().url('Invalid website URL.').or(z.literal('')).optional().nullable(), // Allow empty string or null
+  // logoUrl is handled separately via file upload
+});
+
+export type UpdateSchoolProfileData = z.infer<typeof UpdateSchoolProfileSchema>;
+
 
 /**
  * Generates a simple license key.
@@ -120,6 +154,11 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
         adminUid: adminAuthUid, // Store the Auth UID
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+         // Initialize optional fields as null
+        address: null,
+        phone: null,
+        website: null,
+        logoUrl: null,
     };
     batch.set(newSchoolDocRef, schoolDbData);
 
@@ -168,6 +207,11 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
             updatedAt: finalSchoolData.updatedAt.toDate().toISOString(),
             adminEmail: finalSchoolData.adminEmail,
             adminUid: finalSchoolData.adminUid, // Return the Auth UID
+             // Return optional fields as null if missing
+            address: finalSchoolData.address ?? null,
+            phone: finalSchoolData.phone ?? null,
+            website: finalSchoolData.website ?? null,
+            logoUrl: finalSchoolData.logoUrl ?? null,
         };
 
     } catch (error: any) {
@@ -205,6 +249,10 @@ export async function getSchools(): Promise<School[]> {
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date(0).toISOString(),
         adminEmail: data.adminEmail,
         adminUid: data.adminUid,
+        address: data.address ?? null,
+        phone: data.phone ?? null,
+        website: data.website ?? null,
+        logoUrl: data.logoUrl ?? null,
       };
     });
     return schoolList;
@@ -249,6 +297,10 @@ export async function getSchoolById(id: string): Promise<School | null> {
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date(0).toISOString(),
         adminEmail: data.adminEmail,
         adminUid: data.adminUid,
+        address: data.address ?? null,
+        phone: data.phone ?? null,
+        website: data.website ?? null,
+        logoUrl: data.logoUrl ?? null,
       };
     } else {
       return null;
@@ -265,5 +317,110 @@ export async function getSchoolById(id: string): Promise<School | null> {
       return null;
     }
     return null;
+  }
+}
+
+/**
+ * Updates a school's profile information in Firestore and optionally uploads a new logo.
+ * Only callable by the school's admin.
+ * @param schoolId The ID of the school to update.
+ * @param data The data to update (address, phone, website).
+ * @param logoFile The new logo file to upload (optional).
+ * @param currentAdminUid The UID of the admin performing the update.
+ * @returns A promise that resolves to the updated School object.
+ */
+export async function updateSchoolProfile(
+  schoolId: string,
+  data: UpdateSchoolProfileData,
+  logoFile: File | null,
+  currentAdminUid: string
+): Promise<School> {
+  const schoolDocRef = doc(db, 'schools', schoolId);
+
+  try {
+    // 1. Verify Admin Permissions
+    const schoolSnap = await getDoc(schoolDocRef);
+    if (!schoolSnap.exists()) {
+      throw new Error('School not found.');
+    }
+    const existingSchoolData = schoolSnap.data() as SchoolFirestoreDoc;
+    if (existingSchoolData.adminUid !== currentAdminUid) {
+      throw new Error('Permission denied: Only the assigned admin can update this school.');
+    }
+
+    const updateData: Partial<SchoolFirestoreDoc> & { updatedAt: any } = {
+      updatedAt: serverTimestamp(),
+    };
+
+    // Add provided fields to updateData if they exist
+    if (data.address !== undefined) updateData.address = data.address;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.website !== undefined) updateData.website = data.website;
+    if (data.name !== undefined) updateData.name = data.name; // Allow name update if provided
+
+    // 2. Handle Logo Upload (if provided)
+    let newLogoUrl: string | null = existingSchoolData.logoUrl ?? null;
+    if (logoFile) {
+      console.log(`Uploading new logo for school ${schoolId}...`);
+      const fileExtension = logoFile.name.split('.').pop();
+      const logoFileName = `logo.${fileExtension}`;
+      const logoStorageRef = ref(storage, `school-logos/${schoolId}/${logoFileName}`);
+
+      // Delete previous logo if it exists
+      if (existingSchoolData.logoUrl) {
+        try {
+          const oldLogoRef = ref(storage, existingSchoolData.logoUrl);
+          await deleteObject(oldLogoRef);
+          console.log(`Deleted previous logo for school ${schoolId}`);
+        } catch (deleteError: any) {
+          // Log error but continue - maybe the old URL was invalid
+          console.warn(`Could not delete previous logo (${existingSchoolData.logoUrl}): ${deleteError.message}`);
+        }
+      }
+
+      // Upload the new logo
+      const uploadResult = await uploadBytes(logoStorageRef, logoFile);
+      newLogoUrl = await getDownloadURL(uploadResult.ref);
+      updateData.logoUrl = newLogoUrl; // Add the new URL to the Firestore update
+      console.log(`Logo uploaded successfully for school ${schoolId}. URL: ${newLogoUrl}`);
+    }
+
+    // 3. Update Firestore Document
+    await updateDoc(schoolDocRef, updateData);
+    console.log(`School profile updated successfully for ID: ${schoolId}`);
+
+    // 4. Fetch and return the updated school data
+    const updatedSnap = await getDoc(schoolDocRef);
+    if (!updatedSnap.exists()) {
+      // Should not happen after successful update, but handle defensively
+      throw new Error('Failed to retrieve updated school profile after saving.');
+    }
+    const finalData = updatedSnap.data() as SchoolFirestoreDoc;
+    return {
+      id: updatedSnap.id,
+      name: finalData.name,
+      licenseKey: finalData.licenseKey,
+      createdAt: finalData.createdAt instanceof Timestamp ? finalData.createdAt.toDate().toISOString() : new Date(0).toISOString(),
+      updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : new Date(0).toISOString(),
+      adminEmail: finalData.adminEmail,
+      adminUid: finalData.adminUid,
+      address: finalData.address ?? null,
+      phone: finalData.phone ?? null,
+      website: finalData.website ?? null,
+      logoUrl: finalData.logoUrl ?? null, // Ensure logoUrl is included
+    };
+
+  } catch (error: any) {
+    console.error(`Error updating school profile for ID ${schoolId}:`, error);
+     if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+       throw new Error("Cannot update school profile: Client is offline.");
+     }
+     if (error instanceof FirestoreError && error.code === 'permission-denied') {
+        throw new Error("Permission denied updating school profile. Check Firestore rules.");
+     }
+     if (error.code?.startsWith('storage/')) { // Handle storage errors
+        throw new Error(`Failed to update school logo: ${error.message}`);
+     }
+    throw new Error(`Failed to update school profile: ${error.message}`);
   }
 }

@@ -2,7 +2,7 @@
 'use client';
 
 import type { ReactNode} from 'react';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { getUserProfile, syncUserProfileOnLogin, type User as AppUser } from '@/services/user'; // Import syncUserProfileOnLogin
@@ -14,6 +14,7 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   loading: boolean;
   logout: () => Promise<void>;
+  refreshUserProfile: () => Promise<void>; // Add refresh function
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,47 +24,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname(); // Keep pathname for potential future use
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setLoading(true); // Start loading when auth state changes
-      setFirebaseUser(user);
+  // Function to fetch and set the user profile
+  const fetchAndSetProfile = useCallback(async (fbUser: FirebaseUser | null) => {
+      setLoading(true);
       let profile: AppUser | null = null;
-
-      if (user) {
-        try {
-          // First, try to get the existing profile
-          const existingProfile = await getUserProfile(user.uid);
-          // Then, call syncUserProfileOnLogin which handles creation/update/role assignment
-          profile = await syncUserProfileOnLogin(user, existingProfile);
-          setCurrentUser(profile);
-        } catch (error) {
-          console.error("Error syncing/fetching user profile on auth state change:", error);
-           if (error instanceof FirestoreError && (error.message.includes("offline") || error.code === 'unavailable')) {
-              console.warn("AuthProvider: Could not sync/fetch profile while offline. User is authenticated but profile data may be stale or incomplete.");
+       if (fbUser) {
+         try {
+           // Try to get existing profile first (might be stale if just updated)
+           const existingProfile = await getUserProfile(fbUser.uid);
+           // Sync handles creation/update/role assignment, including school details
+           profile = await syncUserProfileOnLogin(fbUser, existingProfile);
+           setCurrentUser(profile);
+         } catch (error) {
+           console.error("Error syncing/fetching user profile:", error);
+           if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+              console.warn("AuthProvider: Could not sync/fetch profile while offline. User authenticated but profile data may be stale.");
               // Attempt to use potentially stale data if available, otherwise null
-              setCurrentUser(currentUser); // Keep existing state if any (might be null)
+              // setCurrentUser(currentUser); // Keep existing state if any (might be null) - Risky if login needs fresh data
+              // For login, better to show an error or prevent proceeding without profile
+              setCurrentUser(null); // Clear profile if sync fails offline during login/refresh
            } else {
-              // Handle other critical errors (e.g., permissions preventing sync)
                console.error("Critical error during profile sync/fetch. Logging out.", error);
                setCurrentUser(null);
-               // Consider logging out the user if profile sync fails critically
-               // await logout(); // Be careful with async operations in error handlers
+               // await logout(); // Avoid potential infinite loop if logout also fails
            }
-        }
-      } else {
-        // No Firebase user, clear the app user profile
-        setCurrentUser(null);
-      }
-      setLoading(false); // Finish loading after profile handling
+         }
+       } else {
+         setCurrentUser(null);
+       }
+       setLoading(false);
+  }, []); // No dependencies needed for the core logic
+
+  // Listener for Firebase Auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed. User:", user?.uid);
+      setFirebaseUser(user); // Update Firebase user state
+      await fetchAndSetProfile(user); // Fetch/sync profile based on new auth state
     });
 
     return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
+  }, [fetchAndSetProfile]); // Depend on the stable fetch function
 
-  // Removed the secondary useEffect for redirection logic as AuthGuard handles it
+  // Function to manually refresh the profile
+  const refreshUserProfile = useCallback(async () => {
+      if (firebaseUser) {
+          console.log("Manually refreshing user profile...");
+          await fetchAndSetProfile(firebaseUser);
+      } else {
+           console.log("No Firebase user to refresh profile for.");
+      }
+  }, [firebaseUser, fetchAndSetProfile]);
+
 
   const logout = async () => {
     // No need to set loading here, as onAuthStateChanged will trigger and set loading
@@ -86,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     firebaseUser,
     loading,
     logout,
+    refreshUserProfile, // Expose refresh function
   };
 
   // Render children only when loading is false to prevent flash of incorrect content
