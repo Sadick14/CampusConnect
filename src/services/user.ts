@@ -29,13 +29,13 @@ export interface User {
    */
   role: string;
   /**
-   * The ID of the school the user is associated with (optional).
+   * The ID of the school the user is associated with (optional). Stored as null if not associated.
    */
-  schoolId?: string;
+  schoolId?: string | null;
   /**
    * The name of the school the user is associated with (optional, denormalized).
    */
-  schoolName?: string;
+  schoolName?: string | null;
   /**
    * ISO string representation of the creation date.
    */
@@ -54,7 +54,7 @@ export const AdminUserFormSchema = z.object({
   role: z.enum(['student', 'teacher', 'school_admin'], {
     errorMap: () => ({ message: "Invalid role selected." })
   }),
-  schoolId: z.string().optional(),
+  schoolId: z.string().optional().nullable(), // Allow null or optional string
   // schoolName is derived or passed, not directly part of the form input usually
 });
 export type AdminUserFormData = z.infer<typeof AdminUserFormSchema>;
@@ -98,8 +98,8 @@ export async function getUserProfile(uid: string): Promise<User | null> {
         name: data.name || data.displayName || 'Unnamed User',
         email: data.email,
         role: data.role || 'guest',
-        schoolId: data.schoolId,
-        schoolName: schoolName,
+        schoolId: data.schoolId ?? null, // Ensure null if undefined/missing
+        schoolName: schoolName ?? null, // Ensure null if undefined/missing
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
       };
@@ -146,8 +146,9 @@ export async function createUserProfile(
   const userProfileData: Omit<User, 'id'> & { createdAt: any, updatedAt: any } = {
     name: firebaseUser.displayName || additionalData.name || firebaseUser.email?.split('@')[0] || 'Anonymous User',
     email: firebaseUser.email,
-    schoolId: additionalData.schoolId,
-    schoolName: additionalData.schoolName,
+    // Use nullish coalescing to ensure schoolId is null if not provided or undefined
+    schoolId: additionalData.schoolId ?? null,
+    schoolName: additionalData.schoolName ?? null,
     ...additionalData, // Spread additionalData first
     role: role,        // Ensure determined role takes precedence
     createdAt: serverTimestamp(),
@@ -155,6 +156,7 @@ export async function createUserProfile(
   };
 
   // If schoolId is present and schoolName is not, try to fetch schoolName
+  // Check if schoolId is truthy (not null or undefined) before fetching
   if (userProfileData.schoolId && !userProfileData.schoolName) {
     try {
       const schoolDoc = await getDoc(doc(db, 'schools', userProfileData.schoolId));
@@ -163,14 +165,23 @@ export async function createUserProfile(
       }
     } catch (error) {
       console.error(`Error fetching school name for schoolId ${userProfileData.schoolId}:`, error);
-      // Don't fail the profile creation, just proceed without schoolName
+      // Don't fail the profile creation, just proceed without schoolName (will be null)
+      userProfileData.schoolName = null;
     }
   }
 
   try {
     // Use setDoc with merge: true to create or update
-    await setDoc(userDocRef, userProfileData, { merge: true });
-    console.log(`User profile created/updated for UID: ${firebaseUser.uid}`, userProfileData);
+    // Ensure we don't pass undefined fields explicitly
+    const cleanData = Object.entries(userProfileData).reduce((acc, [key, value]) => {
+       if (value !== undefined) {
+         acc[key as keyof typeof userProfileData] = value;
+       }
+       return acc;
+     }, {} as { [key: string]: any }); // Cast to allow serverTimestamp
+    
+    await setDoc(userDocRef, cleanData, { merge: true });
+    console.log(`User profile created/updated for UID: ${firebaseUser.uid}`, cleanData);
 
     // Fetch the just-written doc to return the complete profile with server timestamps
     const savedProfileSnap = await getDoc(userDocRef);
@@ -181,8 +192,8 @@ export async function createUserProfile(
             name: savedData.name,
             email: savedData.email,
             role: savedData.role,
-            schoolId: savedData.schoolId,
-            schoolName: savedData.schoolName,
+            schoolId: savedData.schoolId ?? null,
+            schoolName: savedData.schoolName ?? null,
             createdAt: savedData.createdAt instanceof Timestamp ? savedData.createdAt.toDate().toISOString() : undefined,
             updatedAt: savedData.updatedAt instanceof Timestamp ? savedData.updatedAt.toDate().toISOString() : undefined,
         };
@@ -226,8 +237,8 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
         name: data.name || data.displayName || 'N/A',
         email: data.email || 'N/A',
         role: data.role || 'N/A',
-        schoolId: data.schoolId,
-        schoolName: data.schoolName,
+        schoolId: data.schoolId ?? null,
+        schoolName: data.schoolName ?? null,
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
       } as User;
@@ -284,7 +295,7 @@ export async function adminCreateUserProfile(userData: AdminUserFormData, creati
    if (userData.email === 'superadmin@example.com' && userData.role !== 'superadmin') { // Prevent non-superadmins from using this email unless setting role to superadmin
       throw new Error("The email superadmin@example.com is reserved for the superadmin role.");
    }
-   
+
 
   // Check for existing user profile with the same email
   const usersRef = collection(db, 'users');
@@ -316,7 +327,7 @@ export async function adminCreateUserProfile(userData: AdminUserFormData, creati
     name: userData.name,
     email: userData.email,
     role: userData.role,
-    schoolId: userData.schoolId,
+    schoolId: userData.schoolId ?? null, // Ensure null
     schoolName: '', // Will be populated if schoolId is provided
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -342,12 +353,26 @@ export async function adminCreateUserProfile(userData: AdminUserFormData, creati
   } else if (userData.role !== 'superadmin' && creatingAdminRole === 'superadmin') {
     // Allow superadmin to create users without school, but log warning for non-admin roles.
      console.warn(`Superadmin creating user ${userData.email} with role ${userData.role} without assigning a school.`);
+     profileToCreate.schoolName = null; // Explicitly set to null
+  } else {
+      profileToCreate.schoolName = null; // Ensure null if no schoolId
   }
 
 
   // Create the Firestore document
   try {
-      await setDoc(newUserDocRef, profileToCreate);
+       // Ensure we don't pass undefined fields explicitly
+      const cleanData = Object.entries(profileToCreate).reduce((acc, [key, value]) => {
+          if (value !== undefined) {
+              acc[key as keyof typeof profileToCreate] = value;
+          } else {
+              // If value is undefined, explicitly set to null for Firestore compatibility
+              acc[key as keyof typeof profileToCreate] = null; 
+          }
+          return acc;
+      }, {} as { [key: string]: any }); // Cast to allow serverTimestamp
+
+      await setDoc(newUserDocRef, cleanData);
   } catch (error: any) {
        if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
              throw new Error("Cannot create user profile: Client is offline.");
@@ -373,8 +398,8 @@ export async function adminCreateUserProfile(userData: AdminUserFormData, creati
         name: finalData.name,
         email: finalData.email,
         role: finalData.role,
-        schoolId: finalData.schoolId,
-        schoolName: finalData.schoolName,
+        schoolId: finalData.schoolId ?? null,
+        schoolName: finalData.schoolName ?? null,
         createdAt: finalData.createdAt instanceof Timestamp ? finalData.createdAt.toDate().toISOString() : undefined,
         updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : undefined,
       };
@@ -418,8 +443,8 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
          name: data.name,
          email: data.email,
          role: data.role,
-         schoolId: data.schoolId,
-         schoolName: data.schoolName,
+         schoolId: data.schoolId ?? null,
+         schoolName: data.schoolName ?? null,
          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
       };
@@ -456,7 +481,7 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
       }
     }
     // Prevent school admins from changing school assignment
-     if (updates.schoolId && updates.schoolId !== updatingAdminSchoolId) {
+     if (updates.schoolId !== undefined && updates.schoolId !== existingUserData.schoolId) {
       throw new Error("School admins cannot change a user's school assignment.");
     }
   }
@@ -469,8 +494,8 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
 
 
   // Prepare data for Firestore update
-  const dataToUpdate: { [key: string]: any } = { updatedAt: serverTimestamp() }; 
-  if (updates.name) dataToUpdate.name = updates.name;
+  const dataToUpdate: { [key: string]: any } = { updatedAt: serverTimestamp() };
+  if (updates.name !== undefined && updates.name !== existingUserData.name) dataToUpdate.name = updates.name;
 
   // Update role if allowed and changed
   if (updates.role && updates.role !== existingUserData.role) {
@@ -486,13 +511,10 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
 
   // Handle schoolId and schoolName update
   let schoolChanged = false;
-  if (updates.schoolId !== undefined && updates.schoolId !== (existingUserData.schoolId || null)) { // Compare with null if schoolId can be empty
+  // Check if schoolId is being changed (including setting to null)
+  if (updates.hasOwnProperty('schoolId') && updates.schoolId !== existingUserData.schoolId) {
     schoolChanged = true;
-    dataToUpdate.schoolId = updates.schoolId || null; // Store null if cleared
-  } else if (updates.schoolId === undefined && existingUserData.schoolId !== null && updates.hasOwnProperty('schoolId') && updates.schoolId === null ) { 
-    // Explicitly setting schoolId to null (clearing it)
-    schoolChanged = true;
-    dataToUpdate.schoolId = null;
+    dataToUpdate.schoolId = updates.schoolId ?? null; // Store null if updates.schoolId is null or undefined
   }
 
 
@@ -505,11 +527,12 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
           console.log(`Updating school for user ${userId} to ${dataToUpdate.schoolName} (${dataToUpdate.schoolId})`);
         } else {
            // If user is not superadmin, they must be assigned to a valid school
-           if(existingUserData.role !== 'superadmin' && dataToUpdate.role !== 'superadmin') {
+           const targetRole = dataToUpdate.role ?? existingUserData.role; // Use updated role if changed
+           if(targetRole !== 'superadmin') {
                throw new Error(`Cannot assign user to non-existent school ID: ${dataToUpdate.schoolId}`);
            }
-           console.warn(`Assigning user ${userId} (role: ${existingUserData.role}) to non-existent school ID ${dataToUpdate.schoolId}. Clearing school name.`);
-           dataToUpdate.schoolName = null; 
+           console.warn(`Assigning user ${userId} (role: ${targetRole}) to non-existent school ID ${dataToUpdate.schoolId}. Clearing school name.`);
+           dataToUpdate.schoolName = null;
         }
       } catch (e: any) {
          if (e instanceof FirestoreError && (e.code === 'unavailable' || e.message.includes("offline"))) {
@@ -518,7 +541,8 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
          throw new Error(`Failed to validate school for update: ${e.message}`);
       }
     } else { // Clearing school assignment
-      if (existingUserData.role !== 'superadmin' && (dataToUpdate.role ? dataToUpdate.role !== 'superadmin' : true) ) {
+      const targetRole = dataToUpdate.role ?? existingUserData.role; // Use updated role if changed
+      if (targetRole !== 'superadmin' ) {
           throw new Error("Non-superadmin users must be assigned to a school. Cannot clear schoolId.");
       }
       console.log(`Clearing school assignment for user ${userId}`);
@@ -531,8 +555,16 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
   // Perform the update
   if (Object.keys(dataToUpdate).length > 1) { // at least updatedAt + one other field
     try {
-        await updateDoc(userDocRef, dataToUpdate);
-        console.log(`User profile updated for ID: ${userId}`, dataToUpdate);
+        // Clean the data before updating (remove undefined)
+         const cleanDataToUpdate = Object.entries(dataToUpdate).reduce((acc, [key, value]) => {
+           if (value !== undefined) {
+             acc[key as keyof typeof dataToUpdate] = value;
+           }
+           return acc;
+         }, {} as { [key: string]: any });
+
+        await updateDoc(userDocRef, cleanDataToUpdate);
+        console.log(`User profile updated for ID: ${userId}`, cleanDataToUpdate);
     } catch (error: any) {
         if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
             throw new Error("Cannot update user profile: Client is offline.");
@@ -557,8 +589,8 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
         name: finalData.name,
         email: finalData.email,
         role: finalData.role,
-        schoolId: finalData.schoolId,
-        schoolName: finalData.schoolName,
+        schoolId: finalData.schoolId ?? null,
+        schoolName: finalData.schoolName ?? null,
         createdAt: finalData.createdAt instanceof Timestamp ? finalData.createdAt.toDate().toISOString() : undefined,
         updatedAt: finalData.updatedAt instanceof Timestamp ? finalData.updatedAt.toDate().toISOString() : undefined,
       };
@@ -575,9 +607,8 @@ export async function adminUpdateUserProfile(userId: string, updates: Partial<Ad
 // Placeholder - actual superadmin initialization is more about ensuring the Auth user exists
 // and then their profile is created on first login by createUserProfile.
 export async function initializeSuperAdmin() {
-    // The createUserProfile function handles creating/updating the Firestore doc 
+    // The createUserProfile function handles creating/updating the Firestore doc
     // with 'superadmin' role if the logged-in user's UID is 'superadmin'.
     console.log(`Super Admin Auth user (any email) MUST be created manually in Firebase Console with UID: 'superadmin'.`);
     console.log(`On first login with these credentials, their Firestore profile will be created/updated with 'superadmin' role.`);
 }
-
