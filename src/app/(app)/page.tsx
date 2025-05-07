@@ -12,7 +12,8 @@ import {
   ClipboardCheck,
   ClipboardList,
   Receipt,
-  CalendarClock
+  CalendarClock,
+  Loader2 // Import Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
@@ -41,7 +42,7 @@ export default function HomePage() {
     if (currentUser) {
       let message = `Welcome, ${currentUser.name}!`;
       if (currentUser.role) {
-        message += ` (${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)})`;
+        message += ` (${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).replace('_', ' ')})`; // Format role nicely
       }
       if (currentUser.schoolName) {
         message += ` - ${currentUser.schoolName}`;
@@ -52,7 +53,7 @@ export default function HomePage() {
   };
 
   const filteredDashboardItems = dashboardItems.filter(item => 
-    !currentUser || !item.roles || item.roles.includes(currentUser.role)
+    !currentUser || !item.roles || (currentUser.role && item.roles.includes(currentUser.role)) // Check if currentUser.role exists
   );
 
 
@@ -99,7 +100,12 @@ export default function HomePage() {
        {!loading && !currentUser && (
          <Card>
            <CardHeader><CardTitle>Please Log In</CardTitle></CardHeader>
-           <CardContent><p>You need to be logged in to view the dashboard content.</p></CardContent>
+           <CardContent>
+              <p>You need to be logged in to view the dashboard content.</p>
+              <Link href="/login" passHref>
+                 <Button variant="link" className="mt-4 px-0">Go to Login</Button>
+              </Link>
+           </CardContent>
          </Card>
        )}
     </div>

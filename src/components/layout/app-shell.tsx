@@ -18,16 +18,20 @@ import { SidebarNav } from './sidebar-nav';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut, Moon, Sun, UserCircle, ChevronsUpDown } from 'lucide-react';
+import { LogOut, Moon, Sun, UserCircle, ChevronsUpDown, Loader2 } from 'lucide-react'; // Import Loader2
 import { useAuth } from '@/contexts/auth-context';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { currentUser, loading: authLoading, logout } = useAuth();
   const [isDarkTheme, setIsDarkTheme] = React.useState(false);
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false); // Add logging out state
+  const { toast } = useToast(); // Get toast function
 
   React.useEffect(() => {
+    // Check for saved theme preference or system preference
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
@@ -38,6 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       setIsDarkTheme(false);
     }
   }, []);
+
 
   const clientToggleTheme = () => {
     if (document.documentElement.classList.contains('dark')) {
@@ -52,7 +57,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const handleLogout = async () => {
-    await logout();
+    setIsLoggingOut(true); // Set loading state
+    try {
+        await logout();
+        // Redirect is handled within logout function's finally block in AuthContext
+        toast({ title: "Logged out successfully."});
+    } catch (error) {
+         console.error("Logout error:", error);
+         toast({ title: "Logout Failed", description: "An error occurred during logout.", variant: "destructive"});
+         setIsLoggingOut(false); // Reset loading state on error
+    }
+    // No finally block needed here as AuthContext handles redirect and its own loading state reset
   };
   
   const getUserInitials = (name?: string | null) => {
@@ -79,9 +94,20 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="group-data-[collapsible=icon]:hidden">Toggle Theme</span>
           </Button>
           {currentUser && (
-            <Button variant="ghost" onClick={handleLogout} className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-              <LogOut className="h-4 w-4" />
-              <span className="group-data-[collapsible=icon]:hidden">Logout</span>
+            <Button 
+              variant="ghost" 
+              onClick={handleLogout} 
+              disabled={isLoggingOut || authLoading} // Disable while logging out or initial auth loading
+              className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              {isLoggingOut ? (
+                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                 <LogOut className="h-4 w-4" />
+              )}
+              <span className="group-data-[collapsible=icon]:hidden">
+                  {isLoggingOut ? "Logging out..." : "Logout"}
+              </span>
             </Button>
           )}
         </SidebarFooter>
@@ -112,9 +138,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem disabled>Profile (Soon)</DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleLogout}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Logout
+                   <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
+                    {isLoggingOut ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <LogOut className="mr-2 h-4 w-4" />
+                    )}
+                    {isLoggingOut ? "Logging out..." : "Logout"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
