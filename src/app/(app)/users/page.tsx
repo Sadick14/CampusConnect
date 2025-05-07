@@ -226,7 +226,7 @@ export default function UsersPage() {
         }
       />
 
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => handleDialogClose(open)}>
+      <Dialog open={isEditDialogOpen} onOpenChange={handleDialogClose}>
         {/* DialogTrigger is now handled by the Add New button above */}
         {/* <DialogTrigger asChild>...</DialogTrigger> */}
         <DialogContent className="sm:max-w-[425px]">
@@ -447,7 +447,7 @@ export default function UsersPage() {
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.name}</TableCell>
                     <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.role?.charAt(0).toUpperCase() + user.role?.slice(1).replace('_', ' ') || 'N/A'}</TableCell>
+                    <TableCell>{user.role?.charAt(0).toUpperCase() + user.role?.slice(1).replace('_', ' ')}</TableCell>
                     <TableCell>{user.schoolName || (user.role === 'superadmin' ? 'N/A (Global)' : (user.schoolId ? `ID: ${user.schoolId}` : 'N/A'))}</TableCell>
                      <TableCell className="font-mono text-xs">
                        {user.id}
