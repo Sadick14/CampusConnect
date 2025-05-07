@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,12 +16,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Loader2, ShieldAlert } from "lucide-react";
+import { PlusCircle, Loader2, ShieldAlert, ClipboardCopy } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { registerSchool, type School } from '@/services/school';
-import { NewSchoolSchema, type NewSchoolData } from '@/schemas/school'; // Updated import path
+import { NewSchoolSchema, type NewSchoolData } from '@/schemas/school';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function RegisterSchoolPage() {
@@ -33,38 +34,46 @@ export default function RegisterSchoolPage() {
     defaultValues: {
       name: "",
       adminEmail: "",
+      adminUid: "", // Initialize adminUid field
     },
   });
+
+  // Function to copy text to clipboard
+  const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text).then(() => {
+        toast({ title: "Copied to clipboard!", description: text });
+      }).catch(err => {
+        toast({ title: "Copy failed", description: "Could not copy text.", variant: "destructive" });
+        console.error('Failed to copy text: ', err);
+      });
+    };
+
 
   async function onSubmit(values: NewSchoolData) {
     setIsLoading(true);
     try {
+      // Pass the full validated data including adminUid
       const newSchool: School = await registerSchool(values);
       toast({
-        title: "School Registered & Admin Profile Created!",
+        title: "School Registered & Admin Profile Linked!",
         description: (
           <div className="space-y-2">
             <p>{`${newSchool.name} has been successfully registered.`}</p>
-            <p>An admin Firestore profile was created for: <strong className="font-mono">{newSchool.adminEmail}</strong></p>
-            <p className="font-semibold text-destructive">
-                NEXT STEP: Manually create Firebase Authentication user:
-            </p>
-             <ul className="list-disc list-inside pl-4 text-sm bg-muted p-2 rounded">
-                <li>Email: <strong className="font-mono">{newSchool.adminEmail}</strong></li>
-                <li>UID: <strong className="font-mono text-primary">{newSchool.adminUid}</strong> (Use this Firestore Admin ID as Auth UID)</li>
-            </ul>
-             <p className="text-xs text-muted-foreground">This links their login to the school admin profile and role.</p>
+            <p>Admin profile created/linked for: <strong className="font-mono">{newSchool.adminEmail}</strong></p>
+            <p>Using Firebase Auth UID: <strong className="font-mono text-primary">{newSchool.adminUid}</strong></p>
+            <p className="text-xs text-muted-foreground">The school admin can now log in using their Firebase Authentication credentials.</p>
           </div>
         ),
-        duration: 15000, // Longer duration for important message
+        duration: 10000,
       });
       router.push("/schools");
     } catch (error) {
       console.error("Error registering school:", error);
       toast({
         title: "Registration Failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred. Ensure the admin email is not already in use by another school admin or superadmin.",
+        description: error instanceof Error ? error.message : "An unknown error occurred. Ensure the admin email or UID is not already linked to another profile.",
         variant: "destructive",
+        duration: 10000,
       });
     } finally {
       setIsLoading(false);
@@ -75,7 +84,7 @@ export default function RegisterSchoolPage() {
     <div>
       <PageHeader
         title="Register New School"
-        description="Add a new school to the CampusConnect Pro system. This will also create an initial admin account for the school."
+        description="Add a new school and link its administrator's pre-created Firebase Auth account."
       />
       <Card className="w-full max-w-2xl mx-auto shadow-lg">
         <CardHeader>
@@ -83,15 +92,21 @@ export default function RegisterSchoolPage() {
             <PlusCircle className="h-5 w-5" /> School Registration Form
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new school and its administrator.
+            Fill in the details below to register a new school. Requires a pre-existing Firebase Auth account for the admin.
           </CardDescription>
         </CardHeader>
          <Alert variant="destructive" className="m-6 mt-0">
            <ShieldAlert className="h-4 w-4" />
-           <AlertTitle>Important: Manual Admin Setup Required</AlertTitle>
-           <AlertDescription>
-               After successfully submitting this form, a Firestore profile for the school admin will be created. You <strong className="font-bold">MUST THEN MANUALLY CREATE</strong> a Firebase Authentication user for this admin.
-               The success message will provide the <strong className="font-bold text-primary">Firestore Admin Profile ID</strong>. Use this ID as the <strong className="font-bold text-primary">User UID</strong> when creating the Firebase Auth user.
+           <AlertTitle>Important: Manual Admin Auth Creation First</AlertTitle>
+           <AlertDescription className="space-y-1">
+                <p>Before submitting this form:</p>
+                <ol className="list-decimal list-inside pl-4 text-sm">
+                    <li><strong className="font-bold">Manually Create Firebase Auth User:</strong> Go to your Firebase Console → Authentication → Users → Add user.</li>
+                    <li>Use the intended Admin Email and set a Password.</li>
+                    <li><strong className="font-bold text-primary">Copy the User UID:</strong> After creating the user, copy the generated UID.</li>
+                    <li><strong className="font-bold">Paste UID Below:</strong> Enter the copied UID into the "Admin Auth UID" field in this form.</li>
+                </ol>
+                <p className="mt-2">This process ensures the school admin's login (Firebase Auth) is correctly linked to their profile (Firestore) within the app.</p>
            </AlertDescription>
          </Alert>
         <Form {...form}>
@@ -120,10 +135,40 @@ export default function RegisterSchoolPage() {
                   <FormItem>
                     <FormLabel>School Admin Email</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder="Enter admin email (e.g., admin@greenvalley.edu)" {...field} />
+                      <Input type="email" placeholder="Enter admin's EXISTING Firebase Auth email" {...field} />
                     </FormControl>
                     <FormDescription>
-                      The email address for the primary administrator of this school.
+                      The email address matching the pre-created Firebase Auth user.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="adminUid"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Admin Auth UID</FormLabel>
+                    <FormControl>
+                      <div className="flex items-center gap-2">
+                        <Input placeholder="Paste the Firebase Auth User UID here" {...field} />
+                         {/* Optional: Add a button to copy the example UID for testing superadmin setup */}
+                         {field.name === 'adminUid' && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => copyToClipboard('example-uid-12345')} // Replace with a relevant example or remove
+                              title="Copy Example UID (for testing)"
+                            >
+                              <ClipboardCopy className="h-4 w-4" />
+                            </Button>
+                          )}
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                     The unique User ID obtained from the Firebase Authentication console after creating the admin user.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -137,7 +182,7 @@ export default function RegisterSchoolPage() {
                 ) : (
                   <PlusCircle className="mr-2 h-4 w-4" />
                 )}
-                Register School & Create Admin Profile
+                Register School & Link Admin
               </Button>
             </CardFooter>
           </form>

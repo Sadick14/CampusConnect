@@ -1,13 +1,13 @@
+
 'use server';
 /**
  * @fileOverview Service functions for managing school data in Firestore.
  */
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError, updateDoc } from 'firebase/firestore';
-// import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // For creating user, handled manually
+import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError, updateDoc, setDoc } from 'firebase/firestore';
 import type { User } from './user'; // Import User type if needed for relationships
-import type { NewSchoolData } from '@/schemas/school'; // Import from the new schema file
+import { NewSchoolData } from '@/schemas/school'; // Import from the new schema file
 
 /**
  * Represents a school as stored and retrieved.
@@ -38,7 +38,7 @@ export interface School {
    */
   adminEmail: string;
   /**
-   * UID of the school's primary admin (Firestore user document ID).
+   * UID of the school's primary admin (Firebase Auth UID / Firestore user document ID).
    */
   adminUid?: string;
 }
@@ -52,7 +52,7 @@ interface SchoolFirestoreDoc {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   adminEmail: string;
-  adminUid?: string; // This will be the Firestore document ID of the admin user profile
+  adminUid?: string; // This will be the Firebase Auth UID
 }
 
 /**
@@ -65,89 +65,130 @@ function generateLicenseKey(): string {
 }
 
 /**
- * Asynchronously registers a new school in Firestore and creates a placeholder admin user profile.
- * The Firebase Auth user for the admin MUST be created manually.
- * @param schoolData The data for the new school (name, adminEmail).
+ * Asynchronously registers a new school in Firestore and creates/links the admin user profile.
+ * Requires the Firebase Auth user for the admin to be created MANUALLY beforehand.
+ * @param schoolData The data for the new school including name, adminEmail, and adminUid (Firebase Auth UID).
  * @returns A promise that resolves to the registered School object.
  * @throws Error if registration fails.
  */
 export async function registerSchool(schoolData: NewSchoolData): Promise<School> {
+    if (!schoolData.adminUid) {
+        throw new Error("Admin Auth UID is required but was not provided.");
+    }
+
+  // --- Pre-checks ---
   try {
     const usersRef = collection(db, 'users');
-    // Check if a user profile with this email already exists and is a school_admin for *another* school
-    const qAdmin = query(usersRef, where('email', '==', schoolData.adminEmail), where('role', '==', 'school_admin'));
-    const existingAdminSnap = await getDocs(qAdmin);
 
-    if (!existingAdminSnap.empty) {
-       // A school_admin profile with this email already exists.
-       // This is only a conflict if it's for a different school or if we strictly enforce one school_admin profile per email.
-       // For now, we'll throw an error to prevent duplicates.
-       throw new Error(`An admin profile with email ${schoolData.adminEmail} already exists.`);
+    // 1. Check if a user profile already exists with the provided adminUid
+    const adminProfileDocRef = doc(db, 'users', schoolData.adminUid);
+    const existingProfileSnap = await getDoc(adminProfileDocRef);
+    if (existingProfileSnap.exists()) {
+        const existingProfileData = existingProfileSnap.data();
+        if (existingProfileData.email !== schoolData.adminEmail) {
+            throw new Error(`User UID ${schoolData.adminUid} already exists but is linked to a different email (${existingProfileData.email}).`);
+        }
+        if (existingProfileData.role === 'school_admin' && existingProfileData.schoolId) {
+             throw new Error(`User profile with UID ${schoolData.adminUid} is already an admin for school ${existingProfileData.schoolId}.`);
+        }
+        if (existingProfileData.role === 'superadmin') {
+             throw new Error(`User profile with UID ${schoolData.adminUid} is a superadmin and cannot be assigned as a school admin.`);
+        }
+         // Allow linking if UID exists but isn't a school admin or superadmin yet.
+         console.log(`User profile with UID ${schoolData.adminUid} exists. Will update role and link to new school.`);
     }
-    // Also check if a superadmin exists with this email
-     const qSuperAdmin = query(usersRef, where('email', '==', schoolData.adminEmail), where('role', '==', 'superadmin'));
-     const existingSuperAdminSnap = await getDocs(qSuperAdmin);
-     if (!existingSuperAdminSnap.empty) {
-       throw new Error(`Cannot assign ${schoolData.adminEmail} as school admin; it's already a superadmin email.`);
+
+
+    // 2. Check if another user profile exists with the provided adminEmail (but different UID)
+    const qEmail = query(usersRef, where('email', '==', schoolData.adminEmail));
+    const existingEmailSnap = await getDocs(qEmail);
+    if (!existingEmailSnap.empty) {
+        let emailConflict = false;
+        existingEmailSnap.forEach(doc => {
+            // Conflict if an existing doc with this email has a DIFFERENT UID
+            if (doc.id !== schoolData.adminUid) {
+                emailConflict = true;
+                console.error(`Email conflict: ${schoolData.adminEmail} is already used by user UID ${doc.id}.`);
+            }
+        });
+        if (emailConflict) {
+            throw new Error(`The email ${schoolData.adminEmail} is already associated with a different user profile.`);
+        }
+    }
+
+    // 3. Check if a school already has this user assigned as admin
+    const schoolsRef = collection(db, 'schools');
+    const qSchoolAdmin = query(schoolsRef, where('adminUid', '==', schoolData.adminUid));
+    const existingSchoolAdminSnap = await getDocs(qSchoolAdmin);
+     if (!existingSchoolAdminSnap.empty) {
+        const assignedSchool = existingSchoolAdminSnap.docs[0].data().name;
+       throw new Error(`User UID ${schoolData.adminUid} is already assigned as the admin for school "${assignedSchool}".`);
      }
 
 
   } catch (error: any) {
-      if (error instanceof Error && error.message.includes("already exists")) {
-          throw error; // Re-throw specific error
+      if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+          throw new Error("Cannot perform pre-registration checks: Client is offline.");
       }
-      console.error("Error during admin email existence check:", error);
-      throw new Error("Failed to check existing admin. Please try again.");
+       if (error instanceof Error) { // Re-throw specific errors caught above
+         throw error;
+       }
+      console.error("Error during pre-registration checks:", error);
+      throw new Error("Failed pre-registration checks. Please try again.");
   }
 
+  // --- Create/Update Documents ---
   const batch = writeBatch(db);
   const newSchoolDocRef = doc(collection(db, 'schools'));
-  const adminProfileDocRef = doc(collection(db, 'users')); // Generate ID for the profile doc
+  // Use the PROVIDED adminUid as the document ID for the user profile
+  const adminProfileDocRef = doc(db, 'users', schoolData.adminUid);
 
-  // Explicitly define the structure for the database write, ensuring timestamps are handled by serverTimestamp
+  // School Document Data
   const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
     name: schoolData.name,
     licenseKey: generateLicenseKey(),
     adminEmail: schoolData.adminEmail,
-    adminUid: adminProfileDocRef.id, // Link school to the admin profile ID
+    adminUid: schoolData.adminUid, // Use the provided Auth UID
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
   batch.set(newSchoolDocRef, schoolDbData);
 
-  // Create the Firestore user profile document for the admin
-  const adminProfileData: Omit<User, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
-      name: `${schoolData.name} Admin`, // Default name
+  // Admin User Profile Data (Create or Merge)
+  // If the profile exists, we merge; otherwise, we create. set with merge:true handles both.
+  const adminProfileData: Partial<Omit<User, 'id'>> & { createdAt?: any, updatedAt: any } = {
+      name: `${schoolData.name} Admin`, // Default name, can be updated later
       email: schoolData.adminEmail,
-      role: 'school_admin',
-      schoolId: newSchoolDocRef.id,
-      schoolName: schoolData.name,
-      createdAt: serverTimestamp(),
+      role: 'school_admin', // Set the role
+      schoolId: newSchoolDocRef.id, // Link to the new school ID
+      schoolName: schoolData.name, // Denormalize school name
       updatedAt: serverTimestamp(),
+      // Only set createdAt if the document doesn't exist (Firestore handles this with merge:true implicitly kinda, but safer to check)
+      // However, setDoc with merge handles this. If creating, it adds createdAt. If merging, it leaves existing createdAt.
+      createdAt: serverTimestamp(), // Let Firestore handle setting this on creation
   };
+
    // Clean data to avoid undefined values for Firestore
   const cleanAdminProfileData = Object.entries(adminProfileData).reduce((acc, [key, value]) => {
-    if (value !== undefined) {
-        acc[key as keyof typeof adminProfileData] = value;
-    } else {
-        // Set undefined optional fields to null explicitly for Firestore
-        if (key === 'schoolId' || key === 'schoolName') {
-             acc[key as keyof typeof adminProfileData] = null;
-        }
-    }
+    // We allow null for schoolId/schoolName explicitly if needed, but here we set them
+     if (value !== undefined) {
+         acc[key as keyof typeof adminProfileData] = value;
+     }
     return acc;
-  }, {} as { [key: string]: any }); // Use a generic object type initially
+  }, {} as { [key: string]: any });
 
 
-  batch.set(adminProfileDocRef, cleanAdminProfileData);
+  // Use set with merge: true to create OR update the profile document
+  batch.set(adminProfileDocRef, cleanAdminProfileData, { merge: true });
 
 
+  // --- Commit Batch ---
   try {
     await batch.commit();
     console.log(`School ${schoolData.name} registered with ID: ${newSchoolDocRef.id}`);
-    console.log(`Admin profile created for ${schoolData.adminEmail} with Firestore ID: ${adminProfileDocRef.id}`);
-    console.warn(`IMPORTANT: Manually create Firebase Auth user for ${schoolData.adminEmail} with UID matching the Firestore profile ID: ${adminProfileDocRef.id}`);
+    console.log(`Admin profile linked/created for ${schoolData.adminEmail} using Auth UID: ${schoolData.adminUid}`);
 
+    // Fetch the school doc to return complete data
     const registeredDocSnap = await getDoc(newSchoolDocRef);
     if (!registeredDocSnap.exists()) {
         throw new Error("Failed to retrieve newly registered school after batch write.");
@@ -161,19 +202,16 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
       createdAt: finalSchoolData.createdAt.toDate().toISOString(),
       updatedAt: finalSchoolData.updatedAt.toDate().toISOString(),
       adminEmail: finalSchoolData.adminEmail,
-      adminUid: finalSchoolData.adminUid,
+      adminUid: finalSchoolData.adminUid, // Return the UID used
     };
 
   } catch (error: any) {
     console.error('Error committing school and admin profile batch:', error);
-    if (error instanceof Error && error.message.includes("already exists")) {
-        throw error;
+    if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
+        throw new Error("Cannot complete registration: Client is offline.");
     }
     if (error instanceof FirestoreError && error.code === 'permission-denied') {
-      throw new Error("Permission denied while registering school. Ensure you have the necessary permissions.");
-    }
-    if (error instanceof Error && error.message.includes("offline")) {
-      throw new Error("Failed to register school because the client is offline.");
+      throw new Error("Permission denied while registering school. Check Firestore rules.");
     }
     throw new Error(`Failed to register school. Please try again. ${error.message}`);
   }
@@ -193,8 +231,9 @@ export async function getSchools(): Promise<School[]> {
         id: docSnap.id,
         name: data.name,
         licenseKey: data.licenseKey,
-        createdAt: data.createdAt.toDate().toISOString(),
-        updatedAt: data.updatedAt.toDate().toISOString(),
+        // Handle potential missing timestamps gracefully
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(0).toISOString(),
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date(0).toISOString(),
         adminEmail: data.adminEmail,
         adminUid: data.adminUid,
       };
@@ -204,26 +243,18 @@ export async function getSchools(): Promise<School[]> {
     console.error('Error fetching schools:', error);
      if (error instanceof FirestoreError && error.code === 'permission-denied') {
       console.error("Permission denied while fetching schools. Ensure you have the necessary permissions.");
-      // Decide how to handle this - throw, return empty, etc.
-      // Throwing might be better to indicate failure clearly.
       throw new Error("Permission denied fetching schools.");
-      // return [];
     }
      if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
       console.warn("Failed to fetch schools because the client is offline. Returning empty list.");
-      return []; // Or throw an error indicating offline status
+      return [];
     }
      if (error instanceof Error && error.message.includes("Missing or insufficient permissions")) {
       console.error("Firestore rules error: Missing or insufficient permissions to fetch schools.");
-       // Depending on policy, you might want to throw an error here
-       // to signal the caller that the operation failed due to permissions.
        throw new Error("Permission denied fetching schools.");
-      // return []; // Or return empty if that's acceptable
     }
-    // Rethrow other errors or return empty based on policy
-    // throw error; // Rethrow unexpected errors
      console.error("An unexpected error occurred while fetching schools.");
-     return []; // Default to empty on other errors
+     return [];
   }
 }
 
@@ -244,8 +275,9 @@ export async function getSchoolById(id: string): Promise<School | null> {
         id: schoolSnap.id,
         name: data.name,
         licenseKey: data.licenseKey,
-        createdAt: data.createdAt.toDate().toISOString(),
-        updatedAt: data.updatedAt.toDate().toISOString(),
+         // Handle potential missing timestamps gracefully
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(0).toISOString(),
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date(0).toISOString(),
         adminEmail: data.adminEmail,
         adminUid: data.adminUid,
       };
@@ -260,6 +292,7 @@ export async function getSchoolById(id: string): Promise<School | null> {
     }
      if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) {
       console.warn(`Failed to fetch school with ID ${id} because the client is offline.`);
+      // Consider throwing an error or returning a specific offline indicator
       return null;
     }
     return null;
