@@ -214,7 +214,7 @@ export default function UsersPage() {
       : ['student', 'teacher'];
 
   return (
-    <>
+    
       <PageHeader
         title="User Management"
         description={currentUser.role === 'superadmin' ? "Administer all user accounts." : `Manage users for ${currentUser.schoolName || 'your school'}.`}
@@ -226,7 +226,7 @@ export default function UsersPage() {
         }
       />
 
-      <Dialog open={isEditDialogOpen} onOpenChange={handleDialogClose}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => handleDialogClose(open)}>
         {/* DialogTrigger is now handled by the Add New button above */}
         {/* <DialogTrigger asChild>...</DialogTrigger> */}
         <DialogContent className="sm:max-w-[425px]">
@@ -292,69 +292,70 @@ export default function UsersPage() {
                             control={form.control}
                             name="email"
                             render={({ field }) => (
-                            <div className="grid grid-cols-4 items-center gap-4">
+                            
                                 <Label htmlFor="email" className="text-right">Email</Label>
                                 <Input id="email" {...field} className="col-span-3" placeholder="user@example.com" type="email" />
                                 <span className="col-start-2 col-span-3"><FormMessage /></span>
-                            </div>
+                            
                             )}
                         />
                     )}
                     {/* Display email as read-only when editing */}
                     {editingUser && (
-                        <div className="grid grid-cols-4 items-center gap-4">
+                        
                             <Label htmlFor="email-display" className="text-right">Email</Label>
                             <Input id="email-display" value={editingUser.email || ''} className="col-span-3 bg-muted" readOnly disabled title="Email cannot be changed after creation." />
-                        </div>
+                        
                     )}
                     <FormField
                     control={form.control}
                     name="name"
                     render={({ field }) => (
-                        <div className="grid grid-cols-4 items-center gap-4">
+                        
                         <Label htmlFor="name" className="text-right">Name</Label>
                         <Input id="name" {...field} className="col-span-3" placeholder="Full Name" />
                         <span className="col-start-2 col-span-3"><FormMessage /></span>
-                        </div>
+                        
                     )}
                     />
                     <FormField
                     control={form.control}
                     name="role"
                     render={({ field }) => (
-                        <div className="grid grid-cols-4 items-center gap-4">
+                        
                         <Label htmlFor="role" className="text-right">Role</Label>
                             <Controller
                                 control={form.control}
                                 name="role"
                                 render={({ field: controllerField, fieldState }) => (
-                                <Select
-                                    onValueChange={controllerField.onChange}
-                                    value={controllerField.value}
-                                    // Disable role change if editing the primary superadmin,
-                                    // or if a school admin tries to edit another school admin.
-                                    disabled={(editingUser?.id === 'superadmin') || (currentUser?.role === 'school_admin' && editingUser?.role === 'school_admin')}
-                                >
-                                    <SelectTrigger id="role" className="col-span-3">
-                                        <SelectValue placeholder="Select a role" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                    {allowedRoles.map(roleOption => (
-                                        <SelectItem
-                                        key={roleOption}
-                                        value={roleOption}
-                                        // Prevent school admin from CREATING another school admin
-                                        disabled={roleOption === 'school_admin' && currentUser?.role === 'school_admin' && !editingUser}
-                                        >
-                                            {roleOption.charAt(0).toUpperCase() + roleOption.slice(1).replace('_', ' ')}
-                                        </SelectItem>
-                                    ))}
-                                    </SelectContent>
-                                </Select>
+                                
+                                    <Select
+                                        onValueChange={controllerField.onChange}
+                                        value={controllerField.value}
+                                        // Disable role change if editing the primary superadmin,
+                                        // or if a school admin tries to edit another school admin.
+                                        disabled={(editingUser?.id === 'superadmin') || (currentUser?.role === 'school_admin' && editingUser?.role === 'school_admin')}
+                                    >
+                                        <SelectTrigger id="role" className="col-span-3">
+                                            <SelectValue placeholder="Select a role" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                        {allowedRoles.map(roleOption => (
+                                            <SelectItem
+                                            key={roleOption}
+                                            value={roleOption}
+                                            // Prevent school admin from CREATING another school admin
+                                            disabled={roleOption === 'school_admin' && currentUser?.role === 'school_admin' && !editingUser}
+                                            >
+                                                {roleOption.charAt(0).toUpperCase() + roleOption.slice(1).replace('_', ' ')}
+                                            </SelectItem>
+                                        ))}
+                                        </SelectContent>
+                                    
                                 )}
                             />
                             <span className="col-start-2 col-span-3"><FormMessage /></span>
-                        </div>
+                        
                     )}
                     />
                     {/* School ID Input for Superadmin */}
@@ -363,7 +364,7 @@ export default function UsersPage() {
                         control={form.control}
                         name="schoolId"
                         render={({ field }) => (
-                            <div className="grid grid-cols-4 items-center gap-4">
+                            
                                 <Label htmlFor="schoolId" className="text-right">School ID</Label>
                                 <Input
                                     id="schoolId"
@@ -375,13 +376,13 @@ export default function UsersPage() {
                                     disabled={form.getValues('role') === 'superadmin' || editingUser?.role === 'superadmin'}
                                 />
                                 <span className="col-start-2 col-span-3"><FormMessage /></span>
-                            </div>
+                            
                         )}
                         />
                     )}
                     {/* Display School ID for School Admin (read-only) */}
                      {currentUser.role === 'school_admin' && (
-                         <div className="grid grid-cols-4 items-center gap-4">
+                         
                              <Label htmlFor="schoolId-display" className="text-right">School</Label>
                              <Input
                                 id="schoolId-display"
@@ -390,7 +391,7 @@ export default function UsersPage() {
                                 readOnly
                                 disabled
                                 title="Users will be assigned to your school."/>
-                         </div>
+                         
                      )}
                     <DialogFooter>
                         <DialogClose asChild>
@@ -404,11 +405,11 @@ export default function UsersPage() {
             )}
             {/* Show only close button after successful creation */}
             {!editingUser && createdUserId && (
-                 <DialogFooter className="mt-4">
+                 
                      <DialogClose asChild>
                          <Button type="button" variant="outline">Close</Button>
                      </DialogClose>
-                 </DialogFooter>
+                 
             )}
         </DialogContent>
       </Dialog>
@@ -416,20 +417,22 @@ export default function UsersPage() {
 
       {/* User Table */}
       {users.length === 0 && !isLoading ? (
-         <Card className="mt-6">
-             <CardContent className="pt-6 text-center text-muted-foreground">
+         
+             
                  No users found{currentUser?.role === 'school_admin' ? ` for ${currentUser.schoolName}` : ''}. Click "Add New User Profile" to start.
-             </CardContent>
-         </Card>
+             
+         
       ) : (
-        <Card className="mt-6 shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-primary">User List</CardTitle>
-            <CardDescription>
+        
+          
+            
+              User List
+            
+            
                 {currentUser?.role === 'superadmin' ? 'All users in the system.' : `Users associated with ${currentUser.schoolName || 'your school'}.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            
+          
+          
             <Table>
               <TableHeader>
                 <TableRow>
@@ -489,10 +492,10 @@ export default function UsersPage() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          
+        
       )}
-    </>
+    
   );
 }
 
