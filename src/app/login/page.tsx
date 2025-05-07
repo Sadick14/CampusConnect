@@ -1,91 +1,107 @@
 import { LoginForm } from '@/components/auth/login-form';
-import { Logo } from '@/components/logo'; 
+import { Logo } from '@/components/logo';
 import { AlertCircle, ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import Link from 'next/link';
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-background p-4">
-      <div className="mb-8">
-         <div className="flex items-center gap-2 p-2 justify-center">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="hsl(var(--primary))"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-10 w-10"
-            >
-                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                <path d="M2 17l10 5 10-5" />
-                <path d="M2 12l10 5 10-5" />
-            </svg>
-            <h1 className="text-3xl font-bold text-primary">
-                CampusConnect Pro
-            </h1>
+    <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 px-4 py-12 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8">
+        {/* Logo and Title */}
+        <div className="text-center">
+          <Link href="/" className="inline-block mb-6">
+             <div className="flex items-center justify-center gap-2 p-2">
+                 <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-12 w-12" // Slightly larger logo
+                >
+                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                    <path d="M2 17l10 5 10-5" />
+                    <path d="M2 12l10 5 10-5" />
+                </svg>
+                <h1 className="text-4xl font-bold text-primary">
+                    CampusConnect Pro
+                </h1>
+            </div>
+          </Link>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Sign in to manage your school effectively
+          </p>
         </div>
-      </div>
 
-      <Alert variant="destructive" className="w-full max-w-md mb-6 shadow-lg">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Action Required: Firebase Configuration</AlertTitle>
-        <AlertDescription>
-          Please ensure you have created a <code className="font-mono bg-muted px-1 rounded">.env</code> file in the root of your project and filled in your Firebase project credentials (API Key, Auth Domain, Project ID, etc.).
-          These are required for Firebase services, including authentication, to function correctly. The app will not work without them.
-          Example <code className="font-mono bg-muted px-1 rounded">.env</code> content can be found in the project's README or documentation.
-        </AlertDescription>
-      </Alert>
+        {/* Firebase Config Alert */}
+        <Alert variant="destructive" className="shadow-md border-l-4 border-destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Action Required: Firebase Configuration</AlertTitle>
+          <AlertDescription>
+            Ensure your <code className="font-mono bg-muted px-1 rounded text-xs">.env</code> file is correctly configured with Firebase credentials. Authentication will fail otherwise.
+          </AlertDescription>
+        </Alert>
 
-      <LoginForm />
-      
-      <Card className="w-full max-w-md shadow-xl mt-6 border-primary border-2">
-        <CardHeader className="bg-primary/5 dark:bg-primary/10">
-          <CardTitle className="text-primary flex items-center">
-            <ShieldAlert className="mr-2 h-6 w-6 text-destructive" />
-            Important: Super Admin Account Setup
-          </CardTitle>
-          <CardDescription className="text-foreground/90 space-y-2">
-           <span>To use the Super Admin account, you <strong className="text-destructive-foreground bg-destructive px-1 rounded">MUST FIRST MANUALLY CREATE</strong> this user in your Firebase project:</span>
-            <ol className="list-decimal list-inside mt-2 space-y-1 bg-muted/50 p-3 rounded border border-dashed border-muted-foreground/50">
-              <li>Go to Firebase Console → Authentication → Users → Add user.</li>
-              <li>You can use any email (e.g., <code className="bg-muted px-1 rounded text-sm">superadmin@example.com</code> or your own email like <code className="bg-muted px-1 rounded text-sm">issakasaddick14@gmail.com</code>) and set a password.</li>
-               <li>
-                <strong>Crucially, set the User UID to exactly <code className="bg-destructive text-destructive-foreground px-1 rounded font-mono">superadmin</code></strong>. This specific UID links the Auth user to the superadmin role in the system.
-                </li>
+        {/* Login Form */}
+        <LoginForm />
+
+        {/* Super Admin Setup Info */}
+        <Card className="shadow-md border border-muted/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2 text-foreground">
+              <ShieldAlert className="h-5 w-5 text-amber-500" />
+              Super Admin Account Setup
+            </CardTitle>
+            <CardDescription className="text-xs leading-relaxed">
+             A Firebase Auth user MUST be created manually first:
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm space-y-3">
+            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+              <li>Go to Firebase Console → Authentication → Add user.</li>
+              <li>Use any email (e.g., <code className="bg-muted px-1 rounded text-xs">superadmin@example.com</code>).</li>
+              <li>
+                Set the User UID to <strong className="text-primary font-semibold"><code className="bg-primary/10 px-1 rounded text-xs font-mono">superadmin</code></strong> (Exactly this UID).
+              </li>
             </ol>
-            <span>Once the Firebase Auth user is created with UID <code className="font-mono">superadmin</code>, logging in with that user's credentials will grant superadmin privileges. The system will create/update the corresponding Firestore profile (<code className="font-mono">users/superadmin</code>) upon first successful login.</span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <p className="font-semibold">Suggested Email: <code className="bg-muted px-2 py-1 rounded text-sm text-foreground font-mono">superadmin@example.com</code> (or your chosen email)</p>
-          <p className="font-semibold mt-1">Password: <code className="bg-muted px-2 py-1 rounded text-sm text-foreground font-mono">password</code> (or the password you set)</p>
-           <p className="font-semibold mt-1">REQUIRED UID: <code className="bg-destructive text-destructive-foreground px-2 py-1 rounded text-sm font-mono">superadmin</code></p>
-        </CardContent>
-      </Card>
-        
-      <Card className="w-full max-w-md shadow-xl mt-6 border-accent border-2">
-         <CardHeader className="bg-accent/5 dark:bg-accent/10">
-           <CardTitle className="text-accent flex items-center">
-            <ShieldAlert className="mr-2 h-6 w-6 text-orange-500" />
-             School Admin & Other User Login (Post-Profile Creation)
-           </CardTitle>
-           <CardDescription className="text-foreground/90 space-y-2">
-            <span>When a new school is registered by a superadmin, or a new user profile is added via the "Users" page, a Firestore profile is created. The system will provide a <strong className="text-primary">Firestore Document ID</strong> for this profile.</span>
-             <ol className="list-decimal list-inside mt-2 space-y-1 bg-muted/50 p-3 rounded border border-dashed border-muted-foreground/50">
-               <li>You <strong className="text-destructive-foreground bg-destructive px-1 rounded">MUST MANUALLY CREATE</strong> a Firebase Authentication user for the admin/user:</li>
-                <ul className="list-disc list-inside pl-4">
-                    <li>Email: The email specified during profile creation (e.g., <code className="bg-muted px-1 rounded text-sm">admin@schoolname.com</code>).</li>
-                    <li>Password: Set a temporary password.</li>
-                    <li><strong>User UID: Set this to the <span className="text-primary font-semibold">Firestore Document ID</span></strong> that was provided when the profile was created in the app. This is essential to link the Auth user to their Firestore profile and role.</li>
-                </ul>
-               <li>The user can then log in using their email and the temporary password. They should change their password promptly.</li>
-             </ol>
-           </CardDescription>
-         </CardHeader>
-      </Card>
+            <p className="text-xs text-muted-foreground/80">
+              Logging in with this manually created Auth user (UID: superadmin) grants full system access. The Firestore profile is created/updated on first login.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Other User Login Info */}
+        <Card className="shadow-md border border-muted/50">
+           <CardHeader className="pb-3">
+             <CardTitle className="text-lg flex items-center gap-2 text-foreground">
+               <ShieldAlert className="h-5 w-5 text-blue-500" />
+               School Admin & Other Users
+             </CardTitle>
+             <CardDescription className="text-xs leading-relaxed">
+                For users created via the app (Schools or Users page):
+             </CardDescription>
+           </CardHeader>
+           <CardContent className="text-sm space-y-3">
+              <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                <li>Note the <strong className="text-primary font-semibold">Firestore Document ID</strong> provided by the app after profile creation.</li>
+                <li>Manually create a Firebase Auth user:</li>
+                 <ul className="list-disc list-inside pl-5 text-xs">
+                    <li>Email: Use the same email as the Firestore profile.</li>
+                    <li>User UID: Set this to the <strong className="text-primary font-semibold">Firestore Document ID</strong>.</li>
+                 </ul>
+                 <li>The user can then log in with their email and password.</li>
+              </ol>
+               <p className="text-xs text-muted-foreground/80">
+                 This process links the login credentials (Firebase Auth) to the user's profile and role within the application (Firestore).
+               </p>
+           </CardContent>
+        </Card>
+
+      </div>
     </div>
   );
 }
