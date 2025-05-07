@@ -33,7 +33,11 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-xl mt-4">
         <CardHeader>
           <CardTitle className="text-primary">Super Admin Login (For Testing)</CardTitle>
-          <CardDescription>Use this to test the registration features.</CardDescription>
+          <CardDescription>
+            Use these credentials to log in as Super Admin. 
+            Note: Ensure this Firebase Auth user (superadmin@example.com) has been manually created in your Firebase project's Authentication console with the password 'password'.
+            The system will attempt to create the corresponding Firestore user profile if it doesn't exist upon successful login.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <p>Email: superadmin@example.com</p>
