@@ -62,7 +62,9 @@ export default async function SchoolsPage() {
                      <TableCell>{school.adminEmail || 'N/A'}</TableCell>
                     <TableCell>{format(new Date(school.createdAt), "PPP")}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="outline" size="sm" disabled>Manage</Button> {/* Placeholder for future actions */}
+                      <Link href={`/schools/${school.id}`} passHref>
+                      <Button variant="outline" size="sm" >Manage</Button>
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}

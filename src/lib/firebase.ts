@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, getApp, type FirebaseOptions } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentMultipleTabManager, type PersistentSettings } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig: FirebaseOptions = {
@@ -14,7 +14,20 @@ const firebaseConfig: FirebaseOptions = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+// Disable persistence
+const settings: PersistentSettings = {
+  persistenceKey: 'disabled',
+  tabManager: persistentMultipleTabManager
+};
+
+// Initialize Firestore with persistence disabled
 const db = getFirestore(app);
+initializeFirestore(app, {
+  localCacheSettings: settings
+});
+
+
 const auth = getAuth(app);
 
 export { app, db, auth };

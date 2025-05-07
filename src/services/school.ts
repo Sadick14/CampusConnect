@@ -5,7 +5,7 @@
  */
 
 import { db, auth as firebaseAuth } from '@/lib/firebase'; // Import firebaseAuth
-import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // For creating user
 import { z } from 'zod';
 import { createUserProfile } from './user'; // For creating user profile in Firestore
@@ -85,15 +85,20 @@ function generateTemporaryPassword(): string {
  */
 export async function registerSchool(schoolData: NewSchoolData): Promise<School> {
   // Check if an admin with this email already exists for another school
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('email', '==', schoolData.adminEmail), where('role', '==', 'school_admin'));
-  const existingAdminSnap = await getDocs(q);
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', schoolData.adminEmail), where('role', '==', 'school_admin'));
+    const existingAdminSnap = await getDocs(q);
 
-  if (!existingAdminSnap.empty) {
-    // Check if any of these existing admins are tied to a *different* school or no school (which shouldn't happen for school_admin)
-    // This check can be more robust, e.g. by checking if the schoolId matches if we were updating.
-    // For new registration, any existing 'school_admin' with this email is a conflict.
-    throw new Error(`An admin account with email ${schoolData.adminEmail} already exists for another school.`);
+    if (!existingAdminSnap.empty) {
+      // Check if any of these existing admins are tied to a *different* school or no school (which shouldn't happen for school_admin)
+      // This check can be more robust, e.g. by checking if the schoolId matches if we were updating.
+      // For new registration, any existing 'school_admin' with this email is a conflict.
+      throw new Error(`An admin account with email ${schoolData.adminEmail} already exists for another school.`);
+    }
+  } catch (error: any) {
+      console.error("Error during admin email existence check:", error);
+      throw new Error("Failed to check existing admin. Please try again.");
   }
 
   const tempPassword = generateTemporaryPassword();
@@ -129,7 +134,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
     const batch = writeBatch(db);
 
     const newSchoolDocRef = doc(collection(db, 'schools'));
-    const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'adminUid'> & { createdAt: any, adminUid?: string } = {
+    const schoolDbData: Omit<SchoolFirestoreDoc, 'createdAt' | 'adminUid'> &amp; { createdAt: any, adminUid?: string } = {
       name: schoolData.name,
       licenseKey: generateLicenseKey(),
       adminEmail: schoolData.adminEmail,
@@ -187,12 +192,18 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
       adminUid: finalSchoolData.adminUid,
     };
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error registering school:', error);
-    if (error instanceof Error && error.message.includes("already exists")) {
+    if (error instanceof Error &amp;&amp; error.message.includes("already exists")) {
         throw error; // Re-throw specific error
     }
-    throw new Error('Failed to register school. Please try again.');
+    if (error instanceof FirestoreError &amp;&amp; error.code === 'permission-denied') {
+      throw new Error("Permission denied while registering school. Ensure you have the necessary permissions.");
+    }
+    if (error instanceof Error &amp;&amp; error.message.includes("offline")) {
+      throw new Error("Failed to register school because the client is offline.");
+    }
+    throw new Error(`Failed to register school. Please try again. ${error.message}`);
   }
 }
 
@@ -217,8 +228,16 @@ export async function getSchools(): Promise<School[]> {
       };
     });
     return schoolList;
-  } catch (error) {
+  }  catch (error: any) {
     console.error('Error fetching schools:', error);
+     if (error instanceof FirestoreError &amp;&amp; error.code === 'permission-denied') {
+      console.error("Permission denied while fetching schools. Ensure you have the necessary permissions.");
+      return []; // Or throw an error, depending on desired behavior
+    }
+     if (error instanceof Error &amp;&amp; error.message.includes("offline")) {
+      console.error("Failed to fetch schools because the client is offline.");
+      return [];
+    }
     return [];
   }
 }
@@ -247,8 +266,16 @@ export async function getSchoolById(id: string): Promise<School | null> {
     } else {
       return null;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error fetching school with ID ${id}:`, error);
+     if (error instanceof FirestoreError &amp;&amp; error.code === 'permission-denied') {
+      console.error("Permission denied while fetching school. Ensure you have the necessary permissions.");
+      return null;
+    }
+     if (error instanceof Error &amp;&amp; error.message.includes("offline")) {
+      console.error("Failed to fetch school because the client is offline.");
+      return null;
+    }
     return null;
   }
 }

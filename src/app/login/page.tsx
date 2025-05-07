@@ -1,6 +1,7 @@
 
 import { LoginForm } from '@/components/auth/login-form';
 import { Logo } from '@/components/logo'; // Assuming logo can be used standalone
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
   return (
@@ -28,6 +29,18 @@ export default function LoginPage() {
         </div>
       </div>
       <LoginForm />
+      {/* Super Admin Login - For Testing */}
+      <Card className="w-full max-w-md shadow-xl mt-4">
+        <CardHeader>
+          <CardTitle className="text-primary">Super Admin Login (For Testing)</CardTitle>
+          <CardDescription>Use this to test the registration features.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p>Email: superadmin@example.com</p>
+          <p>Password: password</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
+

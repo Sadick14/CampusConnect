@@ -151,3 +151,31 @@ export async function createGenericUser(userData: Omit<User, 'id' > & {idToSet?:
   await setDoc(doc(db, 'users', id), newUser);
   return newUser;
 }
+
+// Function to initialize a super admin account
+export async function initializeSuperAdmin() {
+    const superAdminEmail = 'superadmin@example.com';
+    const superAdminRef = doc(db, 'users', 'superadmin'); // Using "superadmin" as a fixed ID
+    const superAdminSnap = await getDoc(superAdminRef);
+
+    if (!superAdminSnap.exists()) {
+        // Create super admin profile if it doesn't exist
+        const superAdminData: User = {
+            id: 'superadmin',
+            name: 'Super Admin',
+            email: superAdminEmail,
+            role: 'superadmin',
+        };
+        await setDoc(superAdminRef, superAdminData);
+        console.log('Super admin profile initialized.');
+    } else {
+        console.log('Super admin profile already exists.');
+    }
+}
+
+// Call this function somewhere during app initialization (e.g., in _app.tsx or similar)
+// Make sure this only runs once during initialization.
+// You can also call it from a server action that's only accessible to admins.
+// Example (Conceptual - adjust according to your app structure):
+// import { initializeSuperAdmin } from './services/user';
+// initializeSuperAdmin();

@@ -2,7 +2,7 @@
 'use client';
 
 import { PageHeader } from "@/components/common/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   Users, 
   GraduationCap, 
@@ -13,8 +13,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   Receipt,
-  CalendarClock,
-  UserCircle
+  CalendarClock
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
@@ -29,7 +28,7 @@ const dashboardItems = [
   { title: "Grades", href: "/grades", icon: ClipboardList, description: "Manage grades and assessments", roles: ['school_admin', 'teacher'] },
   { title: "Fees", href: "/fees", icon: CreditCard, description: "Oversee fee collection and status", roles: ['school_admin'] },
   { title: "Expenditure", href: "/expenditure", icon: Receipt, description: "Track school expenditures", roles: ['school_admin'] },
-  { title: "Timetables", href: "/timetables", icon: CalendarClock, description: "Create and manage timetables", roles: ['school_admin', 'teacher'] },
+  { title: "Timetables", href: "/timetables", icon: CalendarClock, description: "Create and manage timetables", roles: ['school_admin', 'teacher', 'student'] },
   { title: "AI Reports", href: "/reports", icon: Sparkles, description: "Generate AI-powered reports", roles: ['school_admin'] },
 ];
 
@@ -64,7 +63,7 @@ export default function HomePage() {
         title="Dashboard" 
         description={welcomeMessage()}
       />
-      {loading && (
+      {loading &amp;&amp; (
          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, index) => (
             <Card key={index} className="shadow-md">
@@ -79,7 +78,7 @@ export default function HomePage() {
           ))}
         </div>
       )}
-      {!loading && currentUser && (
+      {!loading &amp;&amp; currentUser &amp;&amp; (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredDashboardItems.map((item) => (
             <Link href={item.href} key={item.title} passHref>
@@ -98,7 +97,7 @@ export default function HomePage() {
           ))}
         </div>
       )}
-       {!loading && !currentUser && (
+       {!loading &amp;&amp; !currentUser &amp;&amp; (
          <Card>
            <CardHeader><CardTitle>Please Log In</CardTitle></CardHeader>
            <CardContent><p>You need to be logged in to view the dashboard content.</p></CardContent>

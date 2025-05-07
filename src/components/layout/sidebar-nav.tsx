@@ -15,6 +15,7 @@ import {
   Receipt,
   CalendarClock,
   Sparkles,
+  Bell,
   // Settings, // Example, can be added back
 } from 'lucide-react';
 import {
@@ -41,6 +42,7 @@ const navItemsConfig = [
   { href: '/expenditure', label: 'Expenditure', icon: Receipt, roles: ['school_admin'] },
   { href: '/timetables', label: 'Timetables', icon: CalendarClock, roles: ['school_admin', 'teacher', 'student'] },
   { href: '/reports', label: 'AI Reports', icon: Sparkles, roles: ['school_admin'] },
+  { href: '/notifications', label: 'Notifications', icon: Bell, roles: ['superadmin'] }, // Superadmin only
   // Example of a submenu
   // {
   //   label: 'Settings',
@@ -90,3 +92,4 @@ export function SidebarNav() {
     </SidebarMenu>
   );
 }
+

@@ -23,7 +23,7 @@ export default function Error({
       <p className="text-muted-foreground mb-6 max-w-md">
         We encountered an unexpected issue. Please try again, or if the problem persists, contact support.
       </p>
-      <p className="text-sm text-muted-foreground mb-6">Error: {error.message}</p>
+      <p className="text-sm text-muted-foreground mb-6">Error: {error?.message || 'An unexpected error occurred'}</p>
       <Button
         onClick={
           // Attempt to recover by trying to re-render the segment
@@ -37,3 +37,4 @@ export default function Error({
     </div>
   );
 }
+
