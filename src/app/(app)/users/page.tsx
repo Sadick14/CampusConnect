@@ -241,7 +241,7 @@ export default function UsersPage() {
            {!editingUser && createdUserId && (
                <Alert variant="default" className="mt-4 bg-green-100 border-green-300 dark:bg-green-900 dark:border-green-700">
                  <ShieldAlert className="h-4 w-4 text-green-700 dark:text-green-300" />
-                 <AlertTitle className="text-green-800 dark:text-green-200">Success & Next Step: Create Firebase Auth User</AlertTitle>
+                 <AlertTitle className="text-green-800 dark:text-green-200">Success &amp; Next Step: Create Firebase Auth User</AlertTitle>
                  <AlertDescription className="text-green-700 dark:text-green-300 space-y-2">
                      <p>Firestore profile created successfully!</p>
                      <p>Now, manually create the Firebase Authentication user in the Firebase Console:</p>
