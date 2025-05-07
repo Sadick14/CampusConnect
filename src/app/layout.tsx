@@ -6,7 +6,7 @@ import './globals.css';
 // AppShell is removed from here, will be in (app)/layout.tsx
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/contexts/auth-context';
-import { initializeSuperAdmin } from '@/services/user'; // Import initializeSuperAdmin
+// import { initializeSuperAdmin } from '@/services/user'; // Commented out
 
 export const metadata: Metadata = {
   title: 'CampusConnect Pro',
@@ -18,17 +18,17 @@ export const viewport: Viewport = {
   themeColor: '#1A237E',
 };
 
-async function initializeApp() {
-  // Call initializeSuperAdmin here
-  await initializeSuperAdmin();
-}
+// async function initializeApp() { // Commented out
+//   // Call initializeSuperAdmin here
+//   // await initializeSuperAdmin();
+// }
 
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  await initializeApp(); // Call the initialization function
+  // await initializeApp(); // Commented out call
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -41,3 +41,4 @@ export default async function RootLayout({
     </html>
   );
 }
+
