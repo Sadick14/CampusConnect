@@ -1,4 +1,3 @@
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-// Removed user service imports as profile sync is handled by AuthContext
+// Profile sync/fetch happens in AuthContext now
 
 const loginFormSchema = z.object({
   email: z.string().email('Invalid email address.'),
@@ -50,26 +49,24 @@ export function LoginForm() {
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const firebaseUser = userCredential.user;
 
-      // Profile fetching/syncing is now handled by the onAuthStateChanged listener
-      // in AuthContext via syncUserProfileOnLogin. We just need to log in here.
+      // Profile fetching/syncing is handled by the onAuthStateChanged listener
+      // in AuthContext via syncUserProfileOnLogin.
 
       toast({
         title: 'Login Initiated',
-        description: `Welcome back, ${firebaseUser.email}! Verifying profile...`, // Give immediate feedback
+        description: `Welcome back, ${firebaseUser.email}! Verifying profile...`,
       });
 
-      // The AuthProvider will detect the auth change, fetch/sync the profile,
-      // update the currentUser state, and AuthGuard will handle redirection.
-      // We can optimistically push, or wait for AuthGuard. Pushing immediately might be slightly faster UI-wise.
-      router.push('/'); // Redirect to dashboard
+      // AuthProvider handles profile sync and state update. AuthGuard handles redirection.
+      router.push('/'); // Optimistic push to dashboard
 
     } catch (error: any) {
       console.error('Error logging in:', error);
       let errorMessage = 'Login failed. Please try again.';
-      // Firebase Auth error codes: https://firebase.google.com/docs/reference/js/v8/firebase.auth.Auth#error-codes_1
+      // Firebase Auth error codes
       if (error.code === 'auth/user-not-found' ||
           error.code === 'auth/wrong-password' ||
-          error.code === 'auth/invalid-credential' || // Generic credential error
+          error.code === 'auth/invalid-credential' ||
           error.code === 'auth/invalid-email') {
         errorMessage = 'Invalid email or password.';
       } else if (error.code === 'auth/too-many-requests') {
@@ -77,7 +74,10 @@ export function LoginForm() {
       } else if (error.code === 'auth/network-request-failed') {
          errorMessage = 'Network error. Please check your connection and try again.';
       }
-      // Note: Firestore offline errors during profile sync are handled in AuthContext now.
+      // Remove Firestore offline error check
+      // else if (error.message?.includes("offline")) {
+      //   errorMessage = 'Could not connect to sync profile. Please check your connection.';
+      // }
 
       toast({
         title: 'Login Failed',
@@ -159,13 +159,11 @@ export function LoginForm() {
           </CardContent>
         </form>
       </Form>
-       {/* Optional: Add links for "Forgot Password?" or "Sign Up" */}
-        <CardContent className="mt-0 pt-0 text-center text-sm">
+       <CardContent className="mt-0 pt-0 text-center text-sm">
           <p className="text-muted-foreground">
             Credentials required. Contact admin if needed.
           </p>
-           {/* <Link href="/forgot-password" className="text-primary hover:underline">Forgot Password?</Link> */}
-        </CardContent>
+       </CardContent>
     </Card>
   );
 }
