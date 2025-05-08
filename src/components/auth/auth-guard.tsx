@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { ReactNode} from 'react';
@@ -13,27 +12,42 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // IMPORTANT: Only redirect *after* loading is complete and we are certain there's no user.
-    if (!loading && !currentUser) {
-      console.log("[AuthGuard] Not loading and no user. Redirecting to login.");
-      // Optional: Store intended path before redirecting
-      // localStorage.setItem('redirectAfterLogin', pathname);
-      router.push('/login');
-    } else if (!loading && currentUser) {
-       console.log("[AuthGuard] Not loading and user found. Access granted.");
-       // Optional: Redirect away from login page if already logged in and trying to access /login
-       // if (pathname === '/login') {
-       //    console.log("[AuthGuard] User already logged in, redirecting from /login to /");
-       //    router.push('/');
-       // }
-    } else {
-        // Still loading or state is transitioning
-        console.log(`[AuthGuard] Status: Loading=${loading}, CurrentUser=${!!currentUser}`);
+    console.log(`[AuthGuard Effect] Path: ${pathname}, Loading: ${loading}, User: ${!!currentUser}`);
+
+    // If loading is finished
+    if (!loading) {
+      // And there's no user, and we are NOT on the login page
+      if (!currentUser && pathname !== '/login') {
+        console.log("[AuthGuard] Not loading, no user, not on /login. Redirecting to login.");
+        router.replace('/login'); // Use replace to avoid adding login to history when redirecting
+      }
+      // And there IS a user, and we ARE on the login page
+      else if (currentUser && pathname === '/login') {
+        console.log("[AuthGuard] User logged in, but on /login page. Redirecting to /.");
+        router.replace('/'); // Redirect away from login if already authenticated
+      }
+      // And there IS a user, and we are NOT on the login page (Access Granted)
+      else if (currentUser && pathname !== '/login') {
+         console.log("[AuthGuard] Access granted. User exists and not on login page.");
+      }
+       // And there's NO user, and we ARE on the login page (Allow Login Page)
+      else if (!currentUser && pathname === '/login') {
+         console.log("[AuthGuard] No user, on login page. Allowing login page render.");
+      }
     }
-  }, [currentUser, loading, router, pathname]); // Dependencies are correct
+     // Still loading, wait for auth state to resolve
+     else {
+         console.log("[AuthGuard] Still loading auth state...");
+     }
+
+  // Add pathname to dependencies to re-evaluate if the user navigates while still loading/logged out
+  }, [currentUser, loading, router, pathname]);
+
+  // --- Render Logic ---
 
   // Show loading indicator while the auth state is being determined.
   if (loading) {
+    console.log("[AuthGuard Render] Showing loading indicator.");
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -41,46 +55,44 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // If loading is finished AND there is a user, render the children.
-  // This condition is crucial to prevent rendering protected content prematurely.
-  if (!loading && currentUser) {
-    // Do not render children if user is logged in but currently on the login page
-    // This prevents flashing the dashboard before redirecting away from login
-    // if (pathname === '/login') {
-    //    return ( // Return loading state while redirecting from login
-    //        <div className="flex h-screen items-center justify-center">
-    //            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-    //            <p className="ml-2">Redirecting...</p>
-    //        </div>
-    //    );
-    // }
-    return <>{children}</>;
+  // If loading is finished AND there is NO user AND we are NOT on the login page, show redirecting message
+  // This prevents rendering protected children while the redirect effect runs.
+  if (!loading && !currentUser && pathname !== '/login') {
+     console.log("[AuthGuard Render] Showing redirecting message (no user, not on /login).");
+     return (
+       <div className="flex h-screen items-center justify-center">
+         <Loader2 className="h-12 w-12 animate-spin text-primary" />
+         <p className="ml-2">Redirecting to login...</p>
+       </div>
+     );
   }
 
-  // If loading is finished and there's NO user, show a redirecting message
-  // while the useEffect hook performs the redirect. Avoid rendering children.
-  // Also handles the case where the user is logged out and trying to access a protected page.
-  if (!loading && !currentUser && pathname !== '/login') { // Don't show redirecting message on the login page itself
+   // If loading is finished AND there IS a user AND we are on the login page, show redirecting message
+   // This prevents rendering the login page while the redirect effect runs.
+   if (!loading && currentUser && pathname === '/login') {
+       console.log("[AuthGuard Render] Showing redirecting message (user logged in, on /login).");
        return (
-         <div className="flex h-screen items-center justify-center">
-           <Loader2 className="h-12 w-12 animate-spin text-primary" />
-           <p className="ml-2">Redirecting to login...</p>
-         </div>
+           <div className="flex h-screen items-center justify-center">
+               <Loader2 className="h-12 w-12 animate-spin text-primary" />
+               <p className="ml-2">Redirecting...</p>
+           </div>
        );
-  }
-
-   // If on the login page and not logged in, allow rendering the login page children
-   if (!loading && !currentUser && pathname === '/login') {
-       return <>{children}</>;
    }
 
 
-  // Fallback case (should theoretically not be reached with the logic above)
-  // Render null or a minimal loading state to prevent potential flashes of incorrect content.
+  // If loading is finished AND ( (user exists AND not on login page) OR (no user AND on login page) )
+  // then render the children. This covers both authenticated access to protected routes
+  // and unauthenticated access to the login page itself.
+   if (!loading && ((currentUser && pathname !== '/login') || (!currentUser && pathname === '/login'))) {
+     console.log("[AuthGuard Render] Rendering children.");
+     return <>{children}</>;
+   }
+
+  // Fallback: Render loading state if none of the above conditions are met (should be rare).
+  console.log("[AuthGuard Render] Fallback: Rendering loading indicator.");
   return (
      <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
      </div>
   );
 }
-
