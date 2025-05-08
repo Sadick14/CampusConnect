@@ -4,13 +4,10 @@
  * WARNING: Currently uses TEMPORARY In-Memory storage. Not for production.
  */
 
-// Remove Firestore imports
-// import { doc, getDoc, setDoc, collection, getDocs, query, where, updateDoc, serverTimestamp, Timestamp, FirestoreError } from 'firebase/firestore';
-// import { getDb } from '@/lib/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth } from '@/lib/firebase'; // Keep Auth import
-import { getSchoolById, type School } from './school'; // Keep School import
+import { type School } from './school'; // Keep School import
 
 // Import types from schemas
 import {
@@ -98,17 +95,17 @@ export async function getUserProfile(uid: string): Promise<User | null> {
 
 /**
  * Creates or updates the user's profile in the in-memory store *during the login process*.
+ * Fetches the existing profile from memory itself.
  * @param firebaseUser The Firebase Auth user object.
- * @param existingProfileData Optional: Profile data from memory if fetched earlier.
  * @returns Promise resolving to the User profile from the in-memory store.
  * @throws Error if profile creation/update fails critically.
  */
 export async function syncUserProfileOnLogin(
-  firebaseUser: FirebaseUser,
-  existingProfileData?: User | null
+  firebaseUser: FirebaseUser
 ): Promise<User> {
-    console.log(`[In-Memory] Syncing profile for UID: ${firebaseUser.uid}`);
-    const profileInMemory = existingProfileData ?? getUserFromMemory(firebaseUser.uid);
+    console.log(`[User Service - Memory] Syncing profile for UID: ${firebaseUser.uid}`);
+    // Fetch existing profile directly from memory here
+    const profileInMemory = getUserFromMemory(firebaseUser.uid);
     let needsWrite = !profileInMemory; // Write if profile doesn't exist
     let schoolDataFetched: School | null = null;
 
@@ -140,7 +137,8 @@ export async function syncUserProfileOnLogin(
             needsWrite = true;
         }
     } else if (!profileDataToSave.role) {
-        profileDataToSave.role = 'student'; // Default role
+        // If role doesn't exist (new profile likely), default to student
+        profileDataToSave.role = 'student'; // Default role if not superadmin and no role exists
         needsWrite = true;
     }
 
@@ -150,10 +148,12 @@ export async function syncUserProfileOnLogin(
         profileDataToSave.name = authName;
         needsWrite = true;
     }
-    if (profileDataToSave.email !== firebaseUser.email) {
+    // Sync email only if it exists on firebaseUser and is different or missing in profile
+    if (firebaseUser.email && profileDataToSave.email !== firebaseUser.email) {
         profileDataToSave.email = firebaseUser.email;
         needsWrite = true;
     }
+
 
     // --- 4. Set/Sync School Details from Memory ---
      if (firebaseUser.uid !== 'superadmin') {
@@ -168,6 +168,7 @@ export async function syncUserProfileOnLogin(
              profileDataToSave.schoolLogoUrl = currentLogoUrl;
              needsWrite = true;
          }
+         // Ensure schoolId matches fetched data, important if school was deleted
          if (profileDataToSave.schoolId !== (schoolDataFetched?.id ?? null)) {
               profileDataToSave.schoolId = schoolDataFetched?.id ?? null;
               needsWrite = true;
@@ -186,19 +187,54 @@ export async function syncUserProfileOnLogin(
     if (needsWrite) {
         try {
             // Set/Update user in memory
-            finalProfile = setUserInMemory(profileDataToSave as User); // Cast assumes all required fields are present now
+            // Ensure all required fields are present before casting and saving
+            const userToSave: User = {
+              id: profileDataToSave.id!,
+              name: profileDataToSave.name!,
+              email: profileDataToSave.email!,
+              role: profileDataToSave.role!,
+              schoolId: profileDataToSave.schoolId ?? null,
+              schoolName: profileDataToSave.schoolName ?? null,
+              schoolLogoUrl: profileDataToSave.schoolLogoUrl ?? null,
+              createdAt: profileDataToSave.createdAt ?? new Date().toISOString(), // Ensure createdAt exists
+              updatedAt: new Date().toISOString(), // Always set updatedAt
+              class: profileDataToSave.class ?? null,
+              parentContact: profileDataToSave.parentContact ?? null,
+            };
+
+            finalProfile = setUserInMemory(userToSave);
             console.log(`[In-Memory Sync] User profile synced/created for UID: ${firebaseUser.uid}`);
         } catch (error: any) {
             console.error(`[In-Memory Sync] Error syncing user profile for UID ${firebaseUser.uid}:`, error);
             throw new Error(`Failed to create/update user profile in memory: ${error.message}`);
         }
     } else {
-        finalProfile = profileInMemory!; // Use existing if no write needed
+        // If no write needed, ensure the profileInMemory is not null before returning
+        if (!profileInMemory) {
+             // This case should ideally not happen if needsWrite logic is correct, but handle defensively
+             console.error(`[In-Memory Sync] Inconsistent state: No write needed, but profileInMemory is null for UID: ${firebaseUser.uid}. Re-syncing.`);
+             // Force a sync/creation attempt
+             return await syncUserProfileOnLogin(firebaseUser); // Re-call to ensure creation
+        }
+        finalProfile = profileInMemory;
         console.log(`[In-Memory Sync] User profile for ${firebaseUser.uid} is up-to-date. No sync needed.`);
     }
 
     // --- 7. Return the final profile state ---
-    return finalProfile;
+    // Ensure the returned object conforms to the User interface fully
+    return {
+        id: finalProfile.id,
+        name: finalProfile.name,
+        email: finalProfile.email,
+        role: finalProfile.role,
+        schoolId: finalProfile.schoolId ?? null,
+        schoolName: finalProfile.schoolName ?? null,
+        schoolLogoUrl: finalProfile.schoolLogoUrl ?? null,
+        createdAt: finalProfile.createdAt,
+        updatedAt: finalProfile.updatedAt,
+        class: finalProfile.class ?? null,
+        parentContact: finalProfile.parentContact ?? null,
+    };
 }
 
 
@@ -243,7 +279,7 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
 export async function adminCreateUserProfile(
     userData: Omit<AdminUserFormData, 'id'>,
     creatingAdminRole: string,
-    creatingAdminSchoolId?: string
+    creatingAdminSchoolId?: string | null // Allow null
 ): Promise<User> {
     // --- Permission Checks (same as before) ---
     if (creatingAdminRole !== 'superadmin' && creatingAdminRole !== 'school_admin') {
@@ -252,13 +288,18 @@ export async function adminCreateUserProfile(
      if (!userData.password) {
         throw new Error("Password is required to create a new user.");
     }
-     if ((userData.role === 'teacher' || userData.role === 'student') && !userData.schoolId) {
+    let effectiveSchoolId = userData.schoolId;
+     if ((userData.role === 'teacher' || userData.role === 'student') && !effectiveSchoolId) {
           if(creatingAdminRole === 'school_admin' && creatingAdminSchoolId) {
-               userData.schoolId = creatingAdminSchoolId;
+               effectiveSchoolId = creatingAdminSchoolId;
           } else {
-               throw new Error(`School ID is required for role '${userData.role}'.`);
+               // Allow superadmin to create teacher/student without immediate school assignment
+               if(creatingAdminRole !== 'superadmin') {
+                   throw new Error(`School ID is required for role '${userData.role}' when created by a School Admin.`);
+               }
+               effectiveSchoolId = null; // Superadmin can create without assigning
           }
-     } // ... other permission checks ...
+     }
       if (userData.email === 'superadmin@example.com') {
         throw new Error("Cannot create user with the reserved superadmin email.");
       }
@@ -276,7 +317,10 @@ export async function adminCreateUserProfile(
         console.log(`[Admin Create] Auth user created successfully with UID: ${authUser.uid}`);
         await updateProfile(authUser, { displayName: userData.name });
     } catch (error: any) {
-        // ... error handling ...
+        console.error(`Error creating Firebase Auth user for ${userData.email}:`, error);
+        if (error.code === 'auth/email-already-in-use') {
+            throw new Error(`Authentication failed: The email address ${userData.email} is already in use by another account.`);
+        }
         throw new Error(`Failed to create user authentication account: ${error.message}`);
     }
 
@@ -286,7 +330,7 @@ export async function adminCreateUserProfile(
         name: userData.name,
         email: userData.email,
         role: userData.role,
-        schoolId: userData.schoolId ?? null,
+        schoolId: effectiveSchoolId ?? null, // Use the determined schoolId
         schoolName: null,
         schoolLogoUrl: null,
         class: (userData.role === 'student' ? userData.class : null) ?? null,
@@ -302,17 +346,32 @@ export async function adminCreateUserProfile(
              console.log(`[Admin Create] Assigning user ${userData.email} to school: ${profileToCreate.schoolName} (${profileToCreate.schoolId})`);
         } else {
             console.warn(`[Admin Create] Provided non-existent school ID ${profileToCreate.schoolId} for user ${userData.email}. Setting school assignment to null.`);
-            profileToCreate.schoolId = null;
+            profileToCreate.schoolId = null; // Correct the ID if school doesn't exist
         }
     }
 
     // Create the In-Memory record
     try {
-        const createdProfile = addUserToMemory(profileToCreate as Omit<User, 'createdAt' | 'updatedAt'> & { id: string }); // Cast assumes addUserToMemory handles timestamps
+       // Ensure all required fields are present before casting and saving
+        const userToSave: User = {
+          id: profileToCreate.id!,
+          name: profileToCreate.name!,
+          email: profileToCreate.email!,
+          role: profileToCreate.role!,
+          schoolId: profileToCreate.schoolId ?? null,
+          schoolName: profileToCreate.schoolName ?? null,
+          schoolLogoUrl: profileToCreate.schoolLogoUrl ?? null,
+          createdAt: new Date().toISOString(), // Set createdAt
+          updatedAt: new Date().toISOString(), // Set updatedAt
+          class: profileToCreate.class ?? null,
+          parentContact: profileToCreate.parentContact ?? null,
+        };
+        const createdProfile = addUserToMemory(userToSave);
         console.log(`[Admin Create] Successfully created in-memory profile for ${userData.email} with ID ${authUser.uid}`);
         return createdProfile;
     } catch (error: any) {
         console.error(`[Admin Create] Error setting in-memory user profile document for ${userData.email} (UID: ${authUser.uid}):`, error);
+        // Attempt to delete the created Auth user if Firestore write fails? Risky.
         console.error(`CRITICAL: Failed to create in-memory profile for Auth user ${authUser.uid}.`);
         throw new Error(`Failed to create in-memory profile: ${error.message}`);
     }
@@ -331,7 +390,7 @@ export async function adminUpdateUserProfile(
     userId: string,
     updates: Partial<AdminUserFormData>,
     updatingAdminRole: string,
-    updatingAdminSchoolId?: string
+    updatingAdminSchoolId?: string | null // Allow null
 ): Promise<User> {
    if (updatingAdminRole !== 'superadmin' && updatingAdminRole !== 'school_admin') {
         throw new Error("Permission denied: Only admins can update users.");
@@ -353,13 +412,30 @@ export async function adminUpdateUserProfile(
        if (!updatingAdminSchoolId) throw new Error("School admin must have a school ID.");
        if (existingUserData.schoolId !== updatingAdminSchoolId) {
            throw new Error("School admins can only edit users within their own school.");
-       } // ... other school admin rules
+       }
+       // Prevent school admin from changing role to school_admin or superadmin
+        if (updates.role && (updates.role === 'school_admin' || updates.role === 'superadmin')) {
+             throw new Error("School admins cannot assign administrative roles.");
+        }
+        // Prevent school admin from changing schoolId (shouldn't be possible anyway via UI)
+        if (updates.hasOwnProperty('schoolId') && updates.schoolId !== updatingAdminSchoolId) {
+             throw new Error("School admins cannot change a user's school assignment.");
+        }
     }
 
    // --- Prepare Data for Update ---
    const dataToUpdate: Partial<Omit<User, 'id' | 'createdAt' | 'updatedAt'>> = {};
    let needsUpdate = false;
    let schoolChanged = false;
+
+   // Cannot update email or password via this function
+   if (updates.email && updates.email !== existingUserData.email) {
+       console.warn(`Attempted to update email for ${userId}, which is not allowed via adminUpdateUserProfile.`);
+   }
+   if (updates.password) {
+       console.warn(`Attempted to update password for ${userId}, which is not allowed via adminUpdateUserProfile.`);
+   }
+
 
    if (updates.name !== undefined && updates.name !== existingUserData.name) {
      dataToUpdate.name = updates.name;
@@ -384,25 +460,36 @@ export async function adminUpdateUserProfile(
         schoolChanged = true; needsUpdate = true;
         if (newSchoolId) {
             const newSchoolData = getSchoolFromMemory(newSchoolId);
-            if (!newSchoolData) throw new Error(`Cannot assign user to non-existent school ID: ${newSchoolId}`);
-            dataToUpdate.schoolName = newSchoolData.name ?? null;
-            dataToUpdate.schoolLogoUrl = newSchoolData.logoUrl ?? null;
+            if (!newSchoolData) {
+                console.warn(`[Admin Update] Cannot assign user ${userId} to non-existent school ID: ${newSchoolId}. Setting to null.`);
+                dataToUpdate.schoolId = null;
+                dataToUpdate.schoolName = null;
+                dataToUpdate.schoolLogoUrl = null;
+            } else {
+                dataToUpdate.schoolName = newSchoolData.name ?? null;
+                dataToUpdate.schoolLogoUrl = newSchoolData.logoUrl ?? null;
+            }
         } else {
             dataToUpdate.schoolName = null; dataToUpdate.schoolLogoUrl = null;
         }
     } else if (schoolChanged) {
-       // Role changed to superadmin, clear school fields
+       // Role might have changed to superadmin, ensure school fields are cleared
        dataToUpdate.schoolName = null; dataToUpdate.schoolLogoUrl = null;
     }
 
     const finalRole = updates.role || existingUserData.role;
     if (finalRole === 'student') {
+        // Validate class is present if setting role to student or updating a student
+         if (updates.role === 'student' && (!updates.class && !existingUserData.class)) {
+            throw new Error("Class/Grade is required when setting role to student.");
+         }
         if (updates.hasOwnProperty('class') && updates.class !== existingUserData.class) {
              dataToUpdate.class = updates.class ?? null; needsUpdate = true;
         }
         if (updates.hasOwnProperty('parentContact')) {
             const newContact = updates.parentContact ?? null;
             const oldContact = existingUserData.parentContact ?? null;
+            // Simple JSON stringify comparison for changes
             if (JSON.stringify(newContact) !== JSON.stringify(oldContact)) {
                  dataToUpdate.parentContact = newContact; needsUpdate = true;
             }
@@ -413,6 +500,8 @@ export async function adminUpdateUserProfile(
   // --- Perform Update ---
   if (needsUpdate) {
     try {
+        // Add updatedAt timestamp
+        dataToUpdate.updatedAt = new Date().toISOString();
         const updatedUser = updateUserInMemory(userId, dataToUpdate);
         if (!updatedUser) throw new Error("Failed to update user in memory.");
         console.log(`[In-Memory Update] User profile updated for ID: ${userId}`);
@@ -431,8 +520,31 @@ export async function adminUpdateUserProfile(
 /** Placeholder - Super Admin Auth user must be created manually in Firebase Console */
 export async function initializeSuperAdmin() {
     console.log(`Super Admin Auth user MUST be created manually in Firebase Console with UID: 'superadmin'.`);
-    console.log(`[In-Memory DB] A placeholder profile for 'superadmin' is created in memory.`);
+    console.log(`[In-Memory DB] A placeholder profile for 'superadmin' is created/verified in memory.`);
+    // Verify/create the superadmin profile in memory at startup
+    const superAdmin = getUserFromMemory('superadmin');
+    if (!superAdmin) {
+         addUserToMemory({
+            id: 'superadmin',
+            name: 'Super Admin',
+            email: 'superadmin@example.com', // Should match the manually created Auth user
+            role: 'superadmin',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+         });
+         console.log("[In-Memory DB] Initialized default superadmin profile in memory.");
+    } else {
+         // Optional: Ensure the existing superadmin profile is correct
+         if (superAdmin.role !== 'superadmin') {
+             updateUserInMemory('superadmin', { role: 'superadmin', schoolId: null, schoolName: null, schoolLogoUrl: null });
+             console.log("[In-Memory DB] Corrected role for existing superadmin profile.");
+         }
+    }
 }
+
+// Initialize super admin on server startup (or first import)
+initializeSuperAdmin();
+
 
 /**
  * Function to get students with parent/guardian contact for a specific school from memory.

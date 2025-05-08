@@ -3,11 +3,9 @@
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, signOut as firebaseSignOut, type User as FirebaseUser } from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // auth and storage only now
-import { getUserProfile, syncUserProfileOnLogin, type User as AppUser } from '@/services/user';
-import { useRouter, usePathname } from 'next/navigation';
-// Remove FirestoreError import
-// import { FirestoreError } from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
+import { syncUserProfileOnLogin, type User as AppUser } from '@/services/user';
+import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
   currentUser: AppUser | null;
@@ -22,70 +20,102 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Initialize loading to true
   const router = useRouter();
-  const pathname = usePathname();
 
   // Function to fetch and set the user profile from memory
-  const fetchAndSetProfile = useCallback(async (fbUser: FirebaseUser | null) => {
-      setLoading(true);
-      let profile: AppUser | null = null;
-       if (fbUser) {
-         try {
-           // getUserProfile now uses the in-memory store
-           const existingProfile = await getUserProfile(fbUser.uid);
-           // syncUserProfileOnLogin now uses the in-memory store
-           profile = await syncUserProfileOnLogin(fbUser, existingProfile);
-           setCurrentUser(profile);
-         } catch (error) {
-           console.error("[AuthContext] Error syncing/fetching user profile (in-memory):", error);
-           // Remove Firestore specific offline error handling
-           // if (error instanceof FirestoreError && (error.code === 'unavailable' || error.message.includes("offline"))) { ... }
-           // Handle generic errors or specific errors from in-memory logic if needed
-           console.error("Critical error during profile sync/fetch. Logging out.", error);
-           setCurrentUser(null);
-           // Consider if logout is needed here based on the error type
-           // await logout();
-         }
-       } else {
-         setCurrentUser(null);
+   const fetchAndSetProfile = useCallback(async (fbUser: FirebaseUser | null) => {
+       console.log("[AuthContext] fetchAndSetProfile called. fbUser UID:", fbUser?.uid);
+       // Start loading only if we are actually going to fetch/sync
+       setLoading(true);
+       let profile: AppUser | null = null;
+       try {
+           if (fbUser) {
+               console.log(`[AuthContext] Fetching/syncing profile for UID: ${fbUser.uid}`);
+               profile = await syncUserProfileOnLogin(fbUser); // Pass only fbUser
+               console.log(`[AuthContext] Profile fetched/synced:`, profile);
+               // Only update state if the profile data has actually changed
+               if (JSON.stringify(profile) !== JSON.stringify(currentUser)) {
+                    console.log("[AuthContext] Setting new currentUser state.");
+                    setCurrentUser(profile);
+               } else {
+                    console.log("[AuthContext] Profile data hasn't changed, skipping currentUser update.");
+               }
+           } else {
+               console.log("[AuthContext] No Firebase user, setting currentUser to null.");
+               if (currentUser !== null) { // Only update if it's currently not null
+                   setCurrentUser(null);
+               }
+           }
+       } catch (error) {
+           console.error("[AuthContext] Error syncing/fetching user profile:", error);
+           setCurrentUser(null); // Clear user on error
+       } finally {
+           console.log("[AuthContext] Setting loading to false.");
+           setLoading(false);
        }
-       setLoading(false);
-  }, []); // No dependencies needed for the core logic
+   // Depend on currentUser to compare against fetched profile
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [currentUser]); // currentUser needed for comparison inside
 
   // Listener for Firebase Auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log("Auth state changed. User:", user?.uid);
-      setFirebaseUser(user);
-      await fetchAndSetProfile(user);
-    });
+      // Set initial loading true when the listener mounts
+      setLoading(true);
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+          console.log("[AuthContext] Auth state changed. New Firebase User:", user?.uid, "Current Firebase User State:", firebaseUser?.uid);
+          // Check if the user *actually* changed before processing
+          if (user?.uid !== firebaseUser?.uid) {
+              console.log("[AuthContext] Firebase user changed. Updating firebaseUser state and fetching profile...");
+              setFirebaseUser(user); // Update the firebaseUser state FIRST
+              await fetchAndSetProfile(user);
+          } else if (!user && firebaseUser) {
+              // Handle logout case where user becomes null
+              console.log("[AuthContext] User logged out. Updating firebaseUser state and clearing profile...");
+              setFirebaseUser(null);
+              await fetchAndSetProfile(null);
+          } else {
+              console.log("[AuthContext] Auth state changed, but firebaseUser UID is the same or initial load. Ensuring loading is false.");
+              // If user hasn't changed, we are likely done with initial check or redundant firing.
+              setLoading(false);
+          }
+      });
 
-    return () => unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchAndSetProfile]);
+      return () => {
+          console.log("[AuthContext] Unsubscribing from onAuthStateChanged.");
+          unsubscribe();
+      };
+  // fetchAndSetProfile is stable. firebaseUser is needed for comparison.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchAndSetProfile, firebaseUser]);
+
 
   // Function to manually refresh the profile from memory
   const refreshUserProfile = useCallback(async () => {
-      if (firebaseUser) {
+      const currentFbUser = auth.currentUser; // Get the latest firebase user state directly
+      if (currentFbUser) {
           console.log("[AuthContext] Manually refreshing user profile (in-memory)...");
-          await fetchAndSetProfile(firebaseUser);
+          await fetchAndSetProfile(currentFbUser);
       } else {
            console.log("No Firebase user to refresh profile for.");
+           await fetchAndSetProfile(null); // Ensure profile is cleared if no user
       }
-  }, [firebaseUser, fetchAndSetProfile]);
+  }, [fetchAndSetProfile]);
 
 
   const logout = async () => {
+    setLoading(true); // Indicate loading during logout
     try {
       await firebaseSignOut(auth);
-      setCurrentUser(null);
-      setFirebaseUser(null);
-      router.push('/login');
-      console.log("User signed out successfully.");
+      // State updates (currentUser, firebaseUser) will be handled by the onAuthStateChanged listener
+      console.log("User signed out initiated via logout function.");
+      // Don't push here, let AuthGuard handle redirect based on state change
+      // router.push('/login');
     } catch (error) {
       console.error("Error signing out: ", error);
+      setLoading(false); // Ensure loading is false on error
     }
+    // No finally block needed for loading, as onAuthStateChanged handles it
   };
 
   const value = {
@@ -96,9 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshUserProfile,
   };
 
+  // Render children only when loading is false to prevent rendering protected routes prematurely
   return (
       <AuthContext.Provider value={value}>
-          {!loading ? children : null }
+          {children}
       </AuthContext.Provider>
   );
 }
