@@ -6,7 +6,8 @@
 
 import type { School, SchoolFirestoreDoc } from '@/schemas/school';
 import type { User } from '@/schemas/user';
-import { Timestamp } from 'firebase/firestore'; // Keep for type consistency if needed
+// Remove Timestamp import as it's not used
+// import { Timestamp } from 'firebase/firestore';
 
 // --- Simple ID Generation ---
 let schoolIdCounter = 1;
