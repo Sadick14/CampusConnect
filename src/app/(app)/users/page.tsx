@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Edit, Trash2, Loader2, ShieldAlert, Eye, EyeOff } from "lucide-react"; // Added Eye icons
-import { getUsers, adminCreateUserProfile, adminUpdateUserProfile, type User, AdminUserFormSchema, type AdminUserFormData } from '@/services/user';
+import { getUsers, adminCreateUserProfile, adminUpdateUserProfile, type User } from '@/services/user';
+import { AdminUserFormSchema, type AdminUserFormData } from '@/schemas/user';
 import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -43,7 +44,7 @@ export default function UsersPage() {
   });
 
   useEffect(() => {
-    if (currentUser?.role === 'superadmin' || currentUser?.role === 'school_admin') {
+    if (currentUser?.role === 'superadmin' || currentUser?.role === 'school_admin' || currentUser?.role === 'organization_owner') {
       fetchUsers();
     } else {
       setIsLoading(false);
@@ -82,7 +83,7 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const fetchedUsers = await getUsers(currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined);
+      const fetchedUsers = await getUsers(currentUser?.role === 'school_admin' ? currentUser.schoolId || undefined : undefined);
       setUsers(fetchedUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -172,7 +173,7 @@ export default function UsersPage() {
     );
   }
 
-  if (!currentUser || (currentUser.role !== 'superadmin' && currentUser.role !== 'school_admin')) {
+  if (!currentUser || (currentUser.role !== 'superadmin' && currentUser.role !== 'school_admin' && currentUser.role !== 'organization_owner')) {
     return (
       <div className="container mx-auto px-4">
         <PageHeader title="User Management" description="You do not have permission to manage users." />
@@ -335,8 +336,7 @@ export default function UsersPage() {
                               id="schoolId"
                               {...field}
                               placeholder="Enter School ID (optional)"
-                              // Disable school ID if the role is superadmin (they don't belong to a school)
-                              disabled={form.watch("role") === 'superadmin'}
+                              // School ID is optional for all roles in this form
                               value={field.value ?? ''} // Handle null value for input
                               onChange={(e) => field.onChange(e.target.value || null)} // Send null if empty
                            />

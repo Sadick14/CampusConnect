@@ -44,24 +44,43 @@ export default function NotificationsPage() {
     setIsLoading(true);
 
     try {
-      // Simulate sending a notification (replace with actual logic)
-      // In a real application, you would:
-      // 1. Store the notification in a database.
-      // 2. Use a background task or queue to send the notification to relevant school admins.
-
-      console.log("Sending Notification:", values.message);
-
-      // For demonstration purposes, just show a toast message
-      toast({
-        title: "Notification Sent",
-        description: "The notification has been sent to all school admins.",
-      });
+      // Get all school admin emails
+      const { getSchools } = await import('@/services/school');
+      const schools = await getSchools();
+      const adminEmails = schools.map(school => school.adminEmail).filter(email => email);
+      
+      if (adminEmails.length === 0) {
+        toast({
+          title: "No Recipients",
+          description: "No school admin emails found to send notifications to.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Send notification emails
+      const { sendAdminNotification } = await import('@/services/email');
+      const result = await sendAdminNotification(
+        adminEmails,
+        values.message,
+        currentUser?.name || 'Super Admin'
+      );
+      
+      if (result.success) {
+        toast({
+          title: "Notification Sent Successfully!",
+          description: `The notification has been sent to ${adminEmails.length} school admin(s).`,
+        });
+        form.reset(); // Clear form on success
+      } else {
+        throw new Error(result.error || 'Failed to send notification');
+      }
 
     } catch (error) {
       console.error("Error sending notification:", error);
       toast({
         title: "Error",
-        description: "Failed to send the notification. Please try again.",
+        description: "Failed to send the notification. Please check your email configuration.",
         variant: "destructive",
       });
     } finally {

@@ -19,21 +19,32 @@ export interface User {
    */
   email: string | null;
   /**
-   * The role of the user (e.g., 'superadmin', 'school_admin', 'teacher', 'student').
+   * The role of the user (e.g., 'superadmin', 'organization_owner', 'school_admin', 'teacher', 'student').
    */
-  role: string;
+  role: 'superadmin' | 'organization_owner' | 'school_admin' | 'teacher' | 'student' | string;
   /**
-   * The ID of the school the user is associated with (optional). Stored as null if not associated.
+   * The ID of the currently selected organization (optional). 
+   */
+  currentOrganizationId?: string | null;
+  /**
+   * Array of organization IDs that this user owns or has access to.
+   */
+  organizationIds?: string[];
+  /**
+   * Legacy: The ID of the school the user is associated with (optional). 
+   * @deprecated Use organizationIds instead
    */
   schoolId?: string | null;
   /**
-   * The name of the school the user is associated with (optional, denormalized).
+   * Legacy: The name of the school the user is associated with (optional, denormalized).
+   * @deprecated Use organizations array instead
    */
   schoolName?: string | null;
    /**
-    * The URL of the associated school's logo (optional, denormalized).
+    * Legacy: The URL of the associated school's logo (optional, denormalized).
+    * @deprecated Use organizations array instead
     */
-  schoolLogoUrl?: string | null; // Added school logo URL
+  schoolLogoUrl?: string | null;
   /**
    * ISO string representation of the creation date.
    */
@@ -42,6 +53,10 @@ export interface User {
    * ISO string representation of the last update date.
    */
   updatedAt?: string; // Consider using Date object or Firestore Timestamp in some contexts
+   /**
+    * Optional profile photo URL.
+    */
+   photoURL?: string | null;
    /**
     * Optional class information for students.
     */
@@ -63,7 +78,7 @@ export const AdminUserFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
   email: z.string().email("Invalid email address."),
   password: z.string().min(8, "Password must be at least 8 characters.").optional(), // Required for creation, optional for update
-  role: z.enum(['student', 'teacher', 'school_admin'], { // Superadmin role handled separately
+  role: z.enum(['student', 'teacher', 'school_admin', 'superadmin'], {
     errorMap: () => ({ message: "Invalid role selected." })
   }),
   schoolId: z.string().optional().nullable(), // Allow null or optional string

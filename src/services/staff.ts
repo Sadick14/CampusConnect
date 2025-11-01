@@ -1,55 +1,79 @@
-/**
- * Represents a staff member.
- */
-export interface Staff {
-  /**
-   * The unique identifier of the staff member.
-   */
-  id: string;
-  /**
-   * The name of the staff member.
-   */
-  name: string;
-  /**
-   * The role of the staff member.
-   */
-  role: string;
-  /**
-   * The school ID of the staff member.
-   */
-  schoolId: string;
+import { getDb } from '@/lib/firebase';
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+} from 'firebase/firestore';
+import { StaffMember, StaffMemberInput } from '@/schemas/staff';
+
+const COLLECTION = 'staff';
+
+export async function getStaff(id: string): Promise<StaffMember | null> {
+  const db = getDb();
+  const ref = doc(db, COLLECTION, id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...(snap.data() as any) } as StaffMember;
 }
 
-/**
- * Asynchronously retrieves a staff member by its ID.
- *
- * @param id The ID of the staff member to retrieve.
- * @returns A promise that resolves to a Staff object if found, or null if not found.
- */
-export async function getStaff(id: string): Promise<Staff | null> {
-  // TODO: Implement this by calling an API.
-
-  return {
-    id: '123',
-    name: 'John Doe',
-    role: 'teacher',
-    schoolId: '456',
-  };
+export async function getSchoolStaff(
+  schoolId: string,
+  opts?: { role?: StaffMember['role']; onlyActive?: boolean }
+): Promise<StaffMember[]> {
+  const db = getDb();
+  const col = collection(db, COLLECTION);
+  const constraints: any[] = [where('schoolId', '==', schoolId)];
+  if (opts?.role) constraints.push(where('role', '==', opts.role));
+  if (opts?.onlyActive) constraints.push(where('isActive', '==', true));
+  constraints.push(orderBy('name', 'asc'));
+  const q = query(col, ...constraints);
+  const snaps = await getDocs(q);
+  return snaps.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as StaffMember[];
 }
 
-/**
- * Asynchronously creates a new staff member.
- *
- * @param staff The staff member to create.
- * @returns A promise that resolves to the created Staff object.
- */
-export async function createStaff(staff: Omit<Staff, 'id'>): Promise<Staff> {
-  // TODO: Implement this by calling an API.
-
-  return {
-    id: '456',
-    name: staff.name,
-    role: staff.role,
-    schoolId: staff.schoolId,
+export async function createStaff(data: StaffMemberInput): Promise<StaffMember> {
+  const db = getDb();
+  const now = Timestamp.now();
+  const toSave = {
+    schoolId: data.schoolId,
+    name: data.name,
+    email: data.email,
+    phone: data.phone ?? null,
+    role: data.role,
+    department: data.department ?? null,
+    subjects: data.subjects ?? [],
+    qualification: data.qualification ?? null,
+    experience: data.experience ?? null,
+    salary: data.salary ?? null,
+    isActive: data.isActive ?? true,
+    createdAt: now,
+    updatedAt: now,
   };
+  const docRef = await addDoc(collection(db, COLLECTION), toSave);
+  return { id: docRef.id, ...toSave } as StaffMember;
+}
+
+export async function updateStaff(id: string, updates: Partial<StaffMemberInput>): Promise<void> {
+  const db = getDb();
+  const ref = doc(db, COLLECTION, id);
+  const toUpdate: any = { ...updates, updatedAt: Timestamp.now() };
+  await updateDoc(ref, toUpdate);
+}
+
+export async function deleteStaff(id: string): Promise<void> {
+  const db = getDb();
+  const ref = doc(db, COLLECTION, id);
+  await deleteDoc(ref);
+}
+
+export async function getTeachers(schoolId: string): Promise<StaffMember[]> {
+  return getSchoolStaff(schoolId, { role: 'teacher', onlyActive: true });
 }

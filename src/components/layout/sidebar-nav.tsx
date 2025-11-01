@@ -17,6 +17,12 @@ import {
   Sparkles,
   Bell,
   Settings, // Added Settings icon
+  Plus, // For Register School
+  DollarSign, // For Payment Management
+  BookOpen, // For Classes
+  Shield, // For Super Admin
+  TrendingUp, // For Analytics
+  Building2, // For Schools Management
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -31,20 +37,27 @@ import { useAuth } from '@/contexts/auth-context'; // For role-based filtering
 
 // Define navigation items with roles
 const navItemsConfig = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['superadmin', 'school_admin', 'teacher', 'student'] }, // All authenticated users
-  { href: '/schools', label: 'Schools', icon: SchoolIcon, roles: ['superadmin'] },
-  { href: '/users', label: 'Users', icon: Users, roles: ['superadmin', 'school_admin'] }, // Superadmin can see all, school_admin their school's
-  { href: '/students', label: 'Students', icon: GraduationCap, roles: ['school_admin', 'teacher'] },
-  { href: '/staff', label: 'Staff', icon: Briefcase, roles: ['school_admin'] },
-  { href: '/attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['school_admin', 'teacher'] },
-  { href: '/grades', label: 'Grades & Assessments', icon: ClipboardList, roles: ['school_admin', 'teacher'] },
-  { href: '/fees', label: 'Fees Management', icon: CreditCard, roles: ['school_admin'] },
-  { href: '/expenditure', label: 'Expenditure', icon: Receipt, roles: ['school_admin'] },
-  { href: '/timetables', label: 'Timetables', icon: CalendarClock, roles: ['school_admin', 'teacher', 'student'] },
-  { href: '/reports', label: 'AI Reports', icon: Sparkles, roles: ['school_admin'] },
-  { href: '/notifications', label: 'Notifications', icon: Bell, roles: ['superadmin'] }, // Superadmin only
-   // Added Settings link
-   { href: '/settings', label: 'Settings', icon: Settings, roles: ['superadmin', 'school_admin', 'teacher', 'student'] },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['superadmin', 'school_admin', 'organization_owner', 'teacher', 'student'] }, // All authenticated users
+  
+  // Super Admin Only
+  { href: '/super-admin', label: 'Super Admin', icon: Shield, roles: ['superadmin'] },
+  { href: '/super-admin/analytics', label: 'Analytics', icon: TrendingUp, roles: ['superadmin'] },
+  { href: '/super-admin/school-payments', label: 'School Payments', icon: DollarSign, roles: ['superadmin'] },
+  
+  // School Management
+  { href: '/users', label: 'Users', icon: Users, roles: ['school_admin', 'organization_owner'] },
+  { href: '/classes', label: 'Classes', icon: BookOpen, roles: ['school_admin', 'organization_owner'] },
+  { href: '/students', label: 'Students', icon: GraduationCap, roles: ['school_admin', 'organization_owner', 'teacher'] },
+  { href: '/staff', label: 'Staff', icon: Briefcase, roles: ['school_admin', 'organization_owner'] },
+  { href: '/attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['school_admin', 'organization_owner', 'teacher'] },
+  { href: '/grades', label: 'Grades & Assessments', icon: ClipboardList, roles: ['school_admin', 'organization_owner', 'teacher'] },
+  { href: '/fees', label: 'Fees Management', icon: CreditCard, roles: ['school_admin', 'organization_owner'] },
+  { href: '/expenditure', label: 'Expenditure', icon: Receipt, roles: ['school_admin', 'organization_owner'] },
+  { href: '/timetables', label: 'Timetables', icon: CalendarClock, roles: ['school_admin', 'organization_owner', 'teacher', 'student'] },
+  { href: '/reports', label: 'AI Reports', icon: Sparkles, roles: ['school_admin', 'organization_owner'] },
+  
+  // Settings
+  { href: '/settings', label: 'Settings', icon: Settings, roles: ['superadmin', 'school_admin', 'organization_owner', 'teacher', 'student'] },
 ];
 
 export function SidebarNav() {
@@ -69,9 +82,9 @@ export function SidebarNav() {
           <Link href={item.href} passHref legacyBehavior>
             <SidebarMenuButton
               asChild
-              // Exact match for dashboard, startsWith for others including /settings
-              isActive={item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)}
-              aria-current={(item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)) ? "page" : undefined}
+              // Exact match for dashboard, startsWith for others
+              isActive={item.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(item.href)}
+              aria-current={(item.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(item.href)) ? "page" : undefined}
               tooltip={{ children: item.label, className: "bg-sidebar-accent text-sidebar-accent-foreground" }}
             >
               <a>

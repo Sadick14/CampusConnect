@@ -7,13 +7,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/contexts/auth-context';
 
 export const metadata: Metadata = {
-  title: 'CampusConnect Pro',
-  description: 'Comprehensive School Management System',
-  manifest: '/manifest.json',
+  title: "Syntra",
+  description: "School Management System",
 };
 
 export const viewport: Viewport = {
-  themeColor: '#1A237E',
+  themeColor: '#22C55E',
 };
 
 // The Firebase Auth user for superadmin@example.com (password: password)

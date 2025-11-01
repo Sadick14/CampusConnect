@@ -18,6 +18,18 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Fix for Server Actions in dev containers/Codespaces
+  experimental: {
+    serverActions: {
+      allowedOrigins: [
+        'localhost:9002',
+        '*.app.github.dev',
+        '*.githubpreview.dev',
+        '*.preview.app.github.dev',
+        'opulent-space-goldfish-9vrr6r76997fxqrr-9002.app.github.dev',
+      ],
+    },
+  },
 };
 
 export default nextConfig;

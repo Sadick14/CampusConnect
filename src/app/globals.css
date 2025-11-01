@@ -4,97 +4,97 @@
 
 @layer base {
   :root {
-    --background: 220 13% 93%; /* Light Grey #EEEEEE */
-    --foreground: 236 25% 15%; /* Darker blue-ish grey for text */
+    --background: 0 0% 100%; /* Pure White */
+    --foreground: 142 47% 8%; /* Deep Green for text */
 
     --card: 0 0% 100%; /* White */
-    --card-foreground: 236 25% 15%;
+    --card-foreground: 142 47% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 236 25% 15%;
+    --popover-foreground: 142 47% 8%;
 
-    --primary: 236 63% 29%; /* Deep Blue #1A237E */
-    --primary-foreground: 0 0% 98%; /* White/Light Grey */
+    --primary: 142 76% 36%; /* Professional Green #22C55E */
+    --primary-foreground: 0 0% 100%; /* White */
 
-    --secondary: 236 30% 90%; /* Lighter shade of blue */
-    --secondary-foreground: 236 63% 29%; /* Deep Blue text on light blue */
+    --secondary: 142 30% 96%; /* Very Light Green */
+    --secondary-foreground: 142 47% 11%; /* Dark Green text */
 
-    --muted: 220 13% 88%; /* Slightly darker grey */
-    --muted-foreground: 220 10% 40%;
+    --muted: 142 30% 96%; /* Light Green Grey */
+    --muted-foreground: 142 10% 45%;
 
-    --accent: 180 100% 25%; /* Teal #008080 */
-    --accent-foreground: 0 0% 98%; /* White/Light Grey */
+    --accent: 142 50% 50%; /* Vibrant Green */
+    --accent-foreground: 0 0% 100%; /* White */
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 13% 85%;
-    --input: 220 13% 85%;
-    --ring: 236 63% 45%; /* Brighter shade of primary for focus rings */
+    --border: 142 30% 90%;
+    --input: 142 30% 90%;
+    --ring: 142 76% 36%; /* Green focus ring */
 
-    --chart-1: 236 63% 40%;
-    --chart-2: 180 100% 35%;
-    --chart-3: 236 40% 60%;
-    --chart-4: 180 70% 50%;
-    --chart-5: 236 50% 50%;
+    --chart-1: 142 76% 36%;
+    --chart-2: 142 60% 50%;
+    --chart-3: 142 50% 60%;
+    --chart-4: 142 40% 70%;
+    --chart-5: 142 30% 80%;
 
-    --radius: 0.5rem;
+    --radius: 1.5rem;
 
     /* Sidebar specific colors */
-    --sidebar-background: 236 55% 22%; /* Darker shade of primary */
-    --sidebar-foreground: 220 15% 85%; /* Light grey/blue for text */
-    --sidebar-primary: 180 100% 30%; /* Teal for active/hover states */
+    --sidebar-background: 142 60% 25%; /* Dark Green */
+    --sidebar-foreground: 0 0% 95%; /* Off-white for text */
+    --sidebar-primary: 142 76% 45%; /* Bright Green for active states */
     --sidebar-primary-foreground: 0 0% 100%; /* White */
-    --sidebar-accent: 236 50% 35%; /* Slightly lighter primary for hover */
+    --sidebar-accent: 142 50% 35%; /* Medium Green for hover */
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 236 40% 30%;
-    --sidebar-ring: 180 100% 35%; /* Teal for focus */
+    --sidebar-border: 142 40% 30%;
+    --sidebar-ring: 142 76% 45%; /* Bright Green for focus */
   }
 
   .dark {
-    --background: 236 25% 15%; /* Dark Blue-Grey */
-    --foreground: 220 13% 93%; /* Light Grey */
+    --background: 142 47% 8%; /* Dark Green-Grey */
+    --foreground: 0 0% 100%; /* White */
 
-    --card: 236 22% 18%;
-    --card-foreground: 220 13% 93%;
+    --card: 142 40% 12%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 236 22% 18%;
-    --popover-foreground: 220 13% 93%;
+    --popover: 142 40% 12%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 0 0% 98%; /* White/Light Grey */
-    --primary-foreground: 236 63% 29%; /* Deep Blue */
+    --primary: 142 76% 45%; /* Bright Green */
+    --primary-foreground: 0 0% 100%; /* White */
 
-    --secondary: 236 20% 25%; /* Darker shade of blue */
-    --secondary-foreground: 0 0% 98%; /* White/Light Grey */
+    --secondary: 142 30% 15%; /* Dark Green */
+    --secondary-foreground: 0 0% 98%; /* Off-white */
 
-    --muted: 236 20% 25%;
-    --muted-foreground: 220 10% 60%;
+    --muted: 142 30% 15%;
+    --muted-foreground: 142 20% 60%;
 
-    --accent: 180 100% 30%; /* Teal - slightly brighter for dark mode */
-    --accent-foreground: 0 0% 98%;
+    --accent: 142 60% 50%; /* Vibrant Green */
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 236 20% 28%;
-    --input: 236 20% 28%;
-    --ring: 180 100% 40%;
+    --border: 142 30% 20%;
+    --input: 142 30% 20%;
+    --ring: 142 76% 45%;
 
-    --chart-1: 236 50% 60%;
-    --chart-2: 180 80% 50%;
-    --chart-3: 236 30% 70%;
-    --chart-4: 180 60% 60%;
-    --chart-5: 236 40% 65%;
+    --chart-1: 142 70% 50%;
+    --chart-2: 142 60% 60%;
+    --chart-3: 142 50% 70%;
+    --chart-4: 142 40% 75%;
+    --chart-5: 142 30% 80%;
     
     /* Sidebar specific colors for dark mode */
-    --sidebar-background: 236 40% 12%; /* Even darker blue */
-    --sidebar-foreground: 220 15% 80%; 
-    --sidebar-primary: 180 100% 35%; /* Teal for active/hover */
+    --sidebar-background: 142 50% 10%; /* Very Dark Green */
+    --sidebar-foreground: 0 0% 90%; 
+    --sidebar-primary: 142 76% 50%; /* Bright Green */
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 236 35% 25%; 
+    --sidebar-accent: 142 45% 20%; 
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 236 30% 20%;
-    --sidebar-ring: 180 100% 40%;
+    --sidebar-border: 142 35% 15%;
+    --sidebar-ring: 142 76% 50%;
   }
 }
 
@@ -110,5 +110,183 @@
 
 /* Subtle gradient for body background */
 body {
-  background-image: linear-gradient(to bottom right, hsl(var(--background)), hsl(var(--background) / 0.9));
+  background-image: linear-gradient(135deg, hsl(var(--background)), hsl(var(--background) / 0.95));
+  background-attachment: fixed;
+}
+
+/* Modern card styling with enhanced shadows */
+.card-modern {
+  @apply bg-card/80 backdrop-blur-sm border border-border/50;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-modern:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
+/* Modern button styling */
+.btn-modern {
+  @apply relative overflow-hidden;
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.9));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-modern:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.btn-modern::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn-modern:hover::before {
+  left: 100%;
+}
+
+/* Modern input styling */
+.input-modern {
+  @apply bg-background/50 backdrop-blur-sm border-2 border-border/30;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-modern:focus {
+  @apply border-primary/50 ring-2 ring-primary/20;
+  box-shadow: 0 0 0 3px rgba(var(--primary), 0.1), inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Modern gradient backgrounds */
+.gradient-primary {
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.8));
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent) / 0.8));
+}
+
+.gradient-card {
+  background: linear-gradient(135deg, hsl(var(--card)), hsl(var(--card) / 0.9));
+}
+
+/* Modern animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Modern scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Modern focus styles */
+.focus-modern:focus-visible {
+  @apply outline-none ring-2 ring-primary/50 ring-offset-2 ring-offset-background;
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }

@@ -96,18 +96,52 @@ export default function SchoolCommunication({ schoolId, students }: SchoolCommun
           return;
        }
 
-      console.log(`Simulating sending ${values.communicationType.toUpperCase()} to:`, targetAudience);
-      console.log("Subject:", values.subject);
-      console.log("Message:", values.message);
-      console.log("School ID:", schoolId);
+      if (values.communicationType === 'email') {
+        // Send actual emails to parents
+        try {
+          const { sendParentNotification } = await import('@/services/email');
+          
+          // Get school name for the email
+          const school = students[0]?.schoolName || 'Your School';
+          
+          const emailResult = await sendParentNotification(
+            targetAudience as string[],
+            school,
+            values.subject || 'School Notification',
+            values.message
+          );
+          
+          if (emailResult.success) {
+            toast({
+              title: "Emails Sent Successfully!",
+              description: `Email notifications have been sent to ${targetAudience.length} parent(s).`,
+            });
+          } else {
+            throw new Error(emailResult.error || 'Failed to send emails');
+          }
+        } catch (error) {
+          console.error('Failed to send emails:', error);
+          toast({
+            title: "Email Failed",
+            description: "Failed to send email notifications. Please check your email configuration.",
+            variant: "destructive",
+          });
+          return;
+        }
+      } else {
+        // SMS functionality - placeholder for now
+        console.log(`Sending SMS to:`, targetAudience);
+        console.log("Message:", values.message);
+        
+        // For now, show a message that SMS is not yet implemented
+        toast({
+          title: "SMS Feature Coming Soon",
+          description: `SMS functionality will be available soon. For now, consider using email communication.`,
+          variant: "default",
+        });
+        return;
+      }
 
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      toast({
-        title: `Communication Sent via ${values.communicationType.toUpperCase()}`,
-        description: `The ${values.communicationType} has been sent to ${targetAudience.length} unique parent contact(s).`,
-      });
       form.reset(); // Clear form on success
 
     } catch (error) {
