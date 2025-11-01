@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview Service functions for managing school data in Firestore.
@@ -27,10 +26,9 @@ import {
     type School,
     type NewSchoolData,
     type UpdateSchoolProfileData,
-    SUBSCRIPTION_PLANS
 } from '@/schemas/school';
 import type { User } from '@/schemas/user';
-import { calculateTrialExpiry } from '@/schemas/subscription';
+import { calculateTrialExpiry, SUBSCRIPTION_PLANS } from '@/schemas/subscription';
 
 
 // Re-export types for convenience
@@ -241,7 +239,7 @@ export async function getSchoolById(id: string): Promise<School | null> {
       lastPaymentDate: data.lastPaymentDate?.toDate?.().toISOString() || null,
       totalAmountPaid: data.totalAmountPaid || 0,
       paymentStatus: data.paymentStatus || 'none',
-      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      createdAt: data.createdAt?.toDate?.().toISOString() || data.createdAt,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
     };
   } catch (error: any) {
