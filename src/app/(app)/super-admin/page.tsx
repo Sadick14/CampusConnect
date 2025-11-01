@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -55,6 +56,7 @@ import {
   Send,
   Ban,
   Unlock,
+  Eye,
 } from 'lucide-react';
 import { getAllOrganizations, type Organization } from '@/services/organization';
 import {
@@ -65,6 +67,7 @@ import {
   type SchoolInvitation,
 } from '@/services/invitation';
 import { getPendingPayments, approvePayment, rejectPayment, type PaymentRecord } from '@/services/subscription';
+import Link from 'next/link';
 
 // Super Admin Components
 import { StatsCards } from '@/components/super-admin/stats-cards';
@@ -469,17 +472,11 @@ export default function SuperAdminDashboard() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => router.push(`/super-admin/schools/${org.id}`)}>
-                                  <Users className="h-4 w-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => router.push(`/super-admin/schools/${org.id}#subscription`)}>
-                                  <Unlock className="h-4 w-4 mr-2" />
-                                  Manage Subscription
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600" onClick={() => router.push(`/super-admin/schools/${org.id}#lock`)}>
-                                  <Ban className="h-4 w-4 mr-2" />
-                                  Lock Organization
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/super-admin/organizations/${org.id}`}>
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    View Details
+                                  </Link>
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
