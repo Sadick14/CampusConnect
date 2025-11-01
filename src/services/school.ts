@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Service functions for managing school data in Firestore.
@@ -25,9 +26,12 @@ import {
 import {
     type School,
     type NewSchoolData,
-    type UpdateSchoolProfileData
+    type UpdateSchoolProfileData,
+    SUBSCRIPTION_PLANS
 } from '@/schemas/school';
 import type { User } from '@/schemas/user';
+import { calculateTrialExpiry } from '@/schemas/subscription';
+
 
 // Re-export types for convenience
 export type { School, NewSchoolData, UpdateSchoolProfileData };
@@ -86,6 +90,8 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
         const schoolsRef = collection(db, 'schools');
         const newSchoolRef = doc(schoolsRef); // Generate a new ID
         const schoolId = newSchoolRef.id;
+        const now = new Date();
+        const trialEndDate = calculateTrialExpiry(now);
         
         const schoolToAdd = {
             name: schoolData.name,
@@ -96,6 +102,21 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
             phone: null,
             website: null,
             logoUrl: null,
+            
+            // Correctly initialize subscription fields
+            subscriptionStatus: 'trial',
+            subscriptionType: 'TRIAL',
+            trialStartDate: Timestamp.fromDate(now),
+            trialEndDate: Timestamp.fromDate(trialEndDate),
+            isTrialActive: true,
+            daysRemaining: SUBSCRIPTION_PLANS.TRIAL.duration,
+            subscriptionStartDate: null,
+            subscriptionEndDate: null,
+            nextBillingDate: null,
+            lastPaymentDate: null,
+            totalAmountPaid: 0,
+            paymentStatus: 'none',
+
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         };
@@ -127,7 +148,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
             ...schoolToAdd,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-        };
+        } as School;
 
     } catch (error: any) {
         console.error('Error adding school/admin profile to Firestore:', error);
@@ -158,6 +179,18 @@ export async function getSchools(): Promise<School[]> {
         phone: data.phone || null,
         website: data.website || null,
         logoUrl: data.logoUrl || null,
+        subscriptionStatus: data.subscriptionStatus || 'trial',
+        subscriptionType: data.subscriptionType || 'TRIAL',
+        trialStartDate: data.trialStartDate?.toDate?.().toISOString() || new Date().toISOString(),
+        trialEndDate: data.trialEndDate?.toDate?.().toISOString() || new Date().toISOString(),
+        isTrialActive: data.isTrialActive || false,
+        daysRemaining: data.daysRemaining || 0,
+        subscriptionStartDate: data.subscriptionStartDate?.toDate?.().toISOString() || null,
+        subscriptionEndDate: data.subscriptionEndDate?.toDate?.().toISOString() || null,
+        nextBillingDate: data.nextBillingDate?.toDate?.().toISOString() || null,
+        lastPaymentDate: data.lastPaymentDate?.toDate?.().toISOString() || null,
+        totalAmountPaid: data.totalAmountPaid || 0,
+        paymentStatus: data.paymentStatus || 'none',
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
       });
@@ -196,6 +229,18 @@ export async function getSchoolById(id: string): Promise<School | null> {
       phone: data.phone || null,
       website: data.website || null,
       logoUrl: data.logoUrl || null,
+      subscriptionStatus: data.subscriptionStatus || 'trial',
+      subscriptionType: data.subscriptionType || 'TRIAL',
+      trialStartDate: data.trialStartDate?.toDate?.().toISOString() || new Date().toISOString(),
+      trialEndDate: data.trialEndDate?.toDate?.().toISOString() || new Date().toISOString(),
+      isTrialActive: data.isTrialActive || false,
+      daysRemaining: data.daysRemaining || 0,
+      subscriptionStartDate: data.subscriptionStartDate?.toDate?.().toISOString() || null,
+      subscriptionEndDate: data.subscriptionEndDate?.toDate?.().toISOString() || null,
+      nextBillingDate: data.nextBillingDate?.toDate?.().toISOString() || null,
+      lastPaymentDate: data.lastPaymentDate?.toDate?.().toISOString() || null,
+      totalAmountPaid: data.totalAmountPaid || 0,
+      paymentStatus: data.paymentStatus || 'none',
       createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
     };
@@ -204,6 +249,7 @@ export async function getSchoolById(id: string): Promise<School | null> {
     return null;
   }
 }
+
 
 /**
  * Updates a school's profile information in Firestore and optionally uploads a new logo to Firebase Storage.

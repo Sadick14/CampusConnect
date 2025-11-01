@@ -1,3 +1,4 @@
+
 import { 
   collection, 
   doc, 
@@ -13,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { getDb } from '@/lib/firebase';
 import { Organization, OrganizationFirestoreDoc, NewOrganizationData } from '@/schemas/organization';
+import { SUBSCRIPTION_PLANS } from '@/schemas/subscription';
 
 const ORGANIZATIONS_COLLECTION = 'organizations';
 
@@ -31,7 +33,7 @@ function generateLicenseKey(): string {
 function calculateTrialDates(createdAt: Date) {
   const trialStart = createdAt;
   const trialEnd = new Date(createdAt);
-  trialEnd.setDate(trialEnd.getDate() + 14); // 14-day trial
+  trialEnd.setDate(trialEnd.getDate() + (SUBSCRIPTION_PLANS.TRIAL.duration || 14));
 
   return {
     trialStartDate: Timestamp.fromDate(trialStart),
@@ -127,7 +129,7 @@ export async function createOrganization(
     if (hasExistingOrgs) {
       // Subsequent organizations need payment - no trial
       subscriptionStatus = 'pending_payment';
-      subscriptionType = 'MONTHLY'; // Default to monthly
+      subscriptionType = 'BASIC'; // Default to BASIC plan
       isTrialActive = false;
       daysRemaining = 0;
       trialStartDate = Timestamp.fromDate(now);
@@ -138,7 +140,7 @@ export async function createOrganization(
       subscriptionStatus = 'trial';
       subscriptionType = 'TRIAL';
       isTrialActive = true;
-      daysRemaining = 14;
+      daysRemaining = SUBSCRIPTION_PLANS.TRIAL.duration;
       trialStartDate = trialDates.trialStartDate;
       trialEndDate = trialDates.trialEndDate;
     }
