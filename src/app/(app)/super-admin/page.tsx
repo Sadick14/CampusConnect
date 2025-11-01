@@ -55,9 +55,8 @@ import {
   Send,
   Ban,
   Unlock,
-  TrendingUp,
 } from 'lucide-react';
-import { getSchools, type School } from '@/services/school';
+import { getAllOrganizations, type Organization } from '@/services/organization';
 import {
   createSchoolInvitation,
   getAllInvitations,
@@ -81,7 +80,7 @@ export default function SuperAdminDashboard() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [schools, setSchools] = useState<School[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [invitations, setInvitations] = useState<SchoolInvitation[]>([]);
   const [pendingPayments, setPendingPayments] = useState<PaymentRecord[]>([]);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -105,8 +104,8 @@ export default function SuperAdminDashboard() {
   } = useSuperAdminStats();
 
   // Form state for new invitation
-  const [schoolName, setSchoolName] = useState('');
-  const [schoolEmail, setSchoolEmail] = useState('');
+  const [orgName, setOrgName] = useState('');
+  const [orgEmail, setOrgEmail] = useState('');
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
 
@@ -136,18 +135,17 @@ export default function SuperAdminDashboard() {
       setLoading(true);
       setStatsLoading(true);
       try {
-        // Load non-analytics data in parallel (analytics come from realtime hook)
         const [
-          schoolsData,
+          orgsData,
           invitesData,
           paymentsData,
         ] = await Promise.all([
-          getSchools(),
+          getAllOrganizations(),
           getAllInvitations(),
           getPendingPayments(),
         ]);
 
-        setSchools(schoolsData);
+        setOrganizations(orgsData);
         setInvitations(invitesData);
         setPendingPayments(paymentsData);
       } catch (error: any) {
@@ -175,7 +173,7 @@ export default function SuperAdminDashboard() {
   }, [liveSystemStats, liveRevenueMetrics, liveSchoolActivities, liveLoading]);
 
   const handleCreateInvitation = async () => {
-    if (!currentUser || !schoolName || !schoolEmail || !adminName || !adminEmail) {
+    if (!currentUser || !orgName || !orgEmail || !adminName || !adminEmail) {
       toast({
         title: 'Missing fields',
         description: 'Please fill all required fields',
@@ -187,8 +185,8 @@ export default function SuperAdminDashboard() {
     try {
       const invitation = await createSchoolInvitation(
         {
-          schoolName,
-          schoolEmail,
+          schoolName: orgName,
+          schoolEmail: orgEmail,
           adminEmail,
           adminName,
           status: 'pending',
@@ -204,8 +202,8 @@ export default function SuperAdminDashboard() {
       });
 
       // Reset form
-      setSchoolName('');
-      setSchoolEmail('');
+      setOrgName('');
+      setOrgEmail('');
       setAdminName('');
       setAdminEmail('');
       setInviteDialogOpen(false);
@@ -331,41 +329,41 @@ export default function SuperAdminDashboard() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Syntra Admin Dashboard"
+        title="Super Admin Dashboard"
         description="Comprehensive platform management and analytics"
         actions={
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                Invite New School
+                Invite New Organization
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle>Invite New School</DialogTitle>
+                <DialogTitle>Invite New Organization</DialogTitle>
                 <DialogDescription>
-                  Send an invitation to a school admin to set up their organization
+                  Send an invitation to an admin to set up their organization
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>School Name</Label>
+                  <Label>Organization Name</Label>
                   <Input
                     placeholder="e.g., Springfield High School"
-                    value={schoolName}
-                    onChange={e => setSchoolName(e.target.value)}
+                    value={orgName}
+                    onChange={e => setOrgName(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>School Email</Label>
+                  <Label>Organization Email</Label>
                   <Input
                     type="email"
                     placeholder="info@school.com"
-                    value={schoolEmail}
-                    onChange={e => setSchoolEmail(e.target.value)}
+                    value={orgEmail}
+                    onChange={e => setOrgEmail(e.target.value)}
                   />
                 </div>
 
@@ -409,24 +407,24 @@ export default function SuperAdminDashboard() {
       {/* Revenue Analytics */}
       <RevenueCharts data={revenueMetrics} loading={statsLoading} />
 
-      {/* School Activity Table */}
+      {/* Organization Activity Table */}
       <SchoolActivityTable data={schoolActivities} loading={statsLoading} />
 
       {/* Tabs */}
-      <Tabs defaultValue="schools" className="space-y-4">
+      <Tabs defaultValue="organizations" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="schools">Schools</TabsTrigger>
+          <TabsTrigger value="organizations">Organizations</TabsTrigger>
           <TabsTrigger value="invitations">Invitations</TabsTrigger>
           <TabsTrigger value="payments">Payment Approvals</TabsTrigger>
         </TabsList>
 
-        {/* Schools Tab */}
-        <TabsContent value="schools" className="space-y-4">
+        {/* Organizations Tab */}
+        <TabsContent value="organizations" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>All Schools</CardTitle>
+              <CardTitle>All Organizations</CardTitle>
               <CardDescription>
-                Manage school organizations and subscriptions
+                Manage organizations and their subscriptions
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -434,7 +432,7 @@ export default function SuperAdminDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>School Name</TableHead>
+                      <TableHead>Organization Name</TableHead>
                       <TableHead>Admin Email</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Subscription</TableHead>
@@ -443,25 +441,25 @@ export default function SuperAdminDashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {schools.length === 0 ? (
+                    {organizations.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          No schools registered yet
+                          No organizations registered yet
                         </TableCell>
                       </TableRow>
                     ) : (
-                      schools.map(school => (
-                        <TableRow key={school.id} className="hover:bg-muted/50">
-                          <TableCell className="font-medium">{school.name}</TableCell>
-                          <TableCell>{school.adminEmail}</TableCell>
+                      organizations.map(org => (
+                        <TableRow key={org.id} className="hover:bg-muted/50">
+                          <TableCell className="font-medium">{org.name}</TableCell>
+                          <TableCell>{org.ownerEmail}</TableCell>
                           <TableCell>
-                            <Badge className={getStatusBadge(school.subscriptionStatus || 'trial')}>
-                              {school.subscriptionStatus || 'trial'}
+                            <Badge className={getStatusBadge(org.subscriptionStatus || 'trial')}>
+                              {org.subscriptionStatus || 'trial'}
                             </Badge>
                           </TableCell>
-                          <TableCell>{school.subscriptionType || 'TRIAL'}</TableCell>
+                          <TableCell>{org.subscriptionType || 'TRIAL'}</TableCell>
                           <TableCell>
-                            {new Date(school.createdAt).toLocaleDateString()}
+                            {new Date(org.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
@@ -471,17 +469,17 @@ export default function SuperAdminDashboard() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => router.push(`/super-admin/schools/${school.id}`)}>
+                                <DropdownMenuItem onClick={() => router.push(`/super-admin/schools/${org.id}`)}>
                                   <Users className="h-4 w-4 mr-2" />
                                   View Details
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => router.push(`/super-admin/schools/${school.id}#subscription`)}>
+                                <DropdownMenuItem onClick={() => router.push(`/super-admin/schools/${org.id}#subscription`)}>
                                   <Unlock className="h-4 w-4 mr-2" />
                                   Manage Subscription
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-600" onClick={() => router.push(`/super-admin/schools/${school.id}#lock`)}>
+                                <DropdownMenuItem className="text-red-600" onClick={() => router.push(`/super-admin/schools/${org.id}#lock`)}>
                                   <Ban className="h-4 w-4 mr-2" />
-                                  Lock School
+                                  Lock Organization
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -500,7 +498,7 @@ export default function SuperAdminDashboard() {
         <TabsContent value="invitations" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>School Invitations</CardTitle>
+              <CardTitle>Organization Invitations</CardTitle>
               <CardDescription>
                 Track sent invitations and their status
               </CardDescription>
@@ -510,7 +508,7 @@ export default function SuperAdminDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>School Name</TableHead>
+                      <TableHead>Organization Name</TableHead>
                       <TableHead>Admin Email</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Sent Date</TableHead>
@@ -581,7 +579,7 @@ export default function SuperAdminDashboard() {
             <CardHeader>
               <CardTitle>Pending Payment Approvals</CardTitle>
               <CardDescription>
-                Review and approve school subscription payments
+                Review and approve subscription payments
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -589,7 +587,7 @@ export default function SuperAdminDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>School Name</TableHead>
+                      <TableHead>Organization Name</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Payment Method</TableHead>
