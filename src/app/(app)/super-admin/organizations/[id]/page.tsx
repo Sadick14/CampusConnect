@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -46,8 +47,8 @@ import {
   Phone,
   Globe,
 } from 'lucide-react';
-import { getSchool, type School } from '@/services/school';
-import { getSchoolStudents } from '@/services/student';
+import { getOrganizationById, type Organization } from '@/services/organization';
+import { getStudentsByOrganization } from '@/services/student';
 import { getSchoolStaff } from '@/services/staff';
 import { getSchoolClasses } from '@/services/class';
 import { getSchoolPayments, lockSchoolAccount, unlockSchoolAccount, getSubscription } from '@/services/subscription';
@@ -56,15 +57,15 @@ import type { StaffMember } from '@/schemas/staff';
 import type { Class } from '@/schemas/class';
 import type { PaymentRecord, Subscription } from '@/schemas/subscription';
 
-export default function SchoolDetailPage() {
+export default function OrganizationDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { currentUser } = useAuth();
   const { toast } = useToast();
-  const schoolId = params.id as string;
+  const organizationId = params.id as string;
 
   const [loading, setLoading] = useState(true);
-  const [school, setSchool] = useState<School | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -83,25 +84,26 @@ export default function SchoolDetailPage() {
 
   useEffect(() => {
     async function loadData() {
-      if (!currentUser || currentUser.role !== 'superadmin') return;      setLoading(true);
+      if (!currentUser || currentUser.role !== 'superadmin') return;      
+      setLoading(true);
       try {
         const [
-          schoolData,
+          orgData,
           subscriptionData,
           studentsData,
           staffData,
           classesData,
           paymentsData,
         ] = await Promise.all([
-          getSchool(schoolId),
-          getSubscription(schoolId),
-          getSchoolStudents(schoolId),
-          getSchoolStaff(schoolId),
-          getSchoolClasses(schoolId),
-          getSchoolPayments(schoolId),
+          getOrganizationById(organizationId),
+          getSubscription(organizationId),
+          getStudentsByOrganization(organizationId),
+          getSchoolStaff(organizationId),
+          getSchoolClasses(organizationId),
+          getSchoolPayments(organizationId),
         ]);
 
-        setSchool(schoolData);
+        setOrganization(orgData);
         setSubscription(subscriptionData);
         setStudents(studentsData);
         setStaff(staffData);
@@ -111,7 +113,7 @@ export default function SchoolDetailPage() {
         console.error(error);
         toast({
           title: 'Error',
-          description: 'Failed to load school details',
+          description: 'Failed to load organization details',
           variant: 'destructive',
         });
       } finally {
@@ -120,22 +122,22 @@ export default function SchoolDetailPage() {
     }
 
     loadData();
-  }, [schoolId, currentUser, toast]);
+  }, [organizationId, currentUser, toast]);
 
   const handleLockAccount = async () => {
     try {
-      await lockSchoolAccount(schoolId);
+      await lockSchoolAccount(organizationId);
       toast({
         title: 'Account Locked',
-        description: `${school?.name} has been locked`,
+        description: `${organization?.name} has been locked`,
       });
       setLockDialogOpen(false);
       setActionReason('');
       
       // Refresh data
-      const updatedSchool = await getSchool(schoolId);
-      const updatedSubscription = await getSubscription(schoolId);
-      setSchool(updatedSchool);
+      const updatedOrg = await getOrganizationById(organizationId);
+      const updatedSubscription = await getSubscription(organizationId);
+      setOrganization(updatedOrg);
       setSubscription(updatedSubscription);
     } catch (error: any) {
       console.error(error);
@@ -149,18 +151,18 @@ export default function SchoolDetailPage() {
 
   const handleUnlockAccount = async () => {
     try {
-      await unlockSchoolAccount(schoolId);
+      await unlockSchoolAccount(organizationId);
       toast({
         title: 'Account Unlocked',
-        description: `${school?.name} has been unlocked`,
+        description: `${organization?.name} has been unlocked`,
       });
       setUnlockDialogOpen(false);
       setActionReason('');
       
       // Refresh data
-      const updatedSchool = await getSchool(schoolId);
-      const updatedSubscription = await getSubscription(schoolId);
-      setSchool(updatedSchool);
+      const updatedOrg = await getOrganizationById(organizationId);
+      const updatedSubscription = await getSubscription(organizationId);
+      setOrganization(updatedOrg);
       setSubscription(updatedSubscription);
     } catch (error: any) {
       console.error(error);
@@ -191,11 +193,11 @@ export default function SchoolDetailPage() {
     );
   }
 
-  if (!school) {
+  if (!organization) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-muted-foreground">School not found</p>
+        <p className="text-muted-foreground">Organization not found</p>
         <Button className="mt-4" onClick={() => router.push('/super-admin')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Dashboard
@@ -204,16 +206,16 @@ export default function SchoolDetailPage() {
     );
   }
 
-  const isLocked = school.subscriptionStatus === 'locked';
+  const isLocked = organization.subscriptionStatus === 'locked';
   const activeStudents = students.filter(s => s.status === 'active').length;
-  const activeStaff = staff.filter(s => s.status === 'active').length;
+  const activeStaff = staff.filter(s => s.isActive).length;
   const totalRevenue = payments.filter(p => p.status === 'approved').reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={school.name}
-        description={`School ID: ${school.id}`}
+        title={organization.name}
+        description={`Organization ID: ${organization.id}`}
         actions={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => router.push('/super-admin')}>
@@ -235,36 +237,36 @@ export default function SchoolDetailPage() {
         }
       />
 
-      {/* School Information */}
+      {/* Organization Information */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Building2 className="h-5 w-5" />
-            School Information
+            Organization Information
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Admin Email</p>
+              <p className="text-sm text-muted-foreground mb-1">Owner Email</p>
               <p className="font-medium flex items-center gap-2">
                 <Mail className="h-4 w-4 text-muted-foreground" />
-                {school.adminEmail}
+                {organization.ownerEmail}
               </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Status</p>
-              <Badge className={getStatusBadge(school.subscriptionStatus || 'trial')}>
-                {school.subscriptionStatus || 'trial'}
+              <Badge className={getStatusBadge(organization.subscriptionStatus || 'trial')}>
+                {organization.subscriptionStatus || 'trial'}
               </Badge>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Subscription Type</p>
-              <Badge variant="outline">{school.subscriptionType || 'TRIAL'}</Badge>
+              <Badge variant="outline">{organization.subscriptionType || 'TRIAL'}</Badge>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Created</p>
-              <p className="font-medium">{new Date(school.createdAt).toLocaleDateString()}</p>
+              <p className="font-medium">{new Date(organization.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
         </CardContent>
@@ -396,7 +398,7 @@ export default function SchoolDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Students</CardTitle>
-              <CardDescription>All registered students in this school</CardDescription>
+              <CardDescription>All registered students in this organization</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="border rounded-lg overflow-hidden">
@@ -420,7 +422,7 @@ export default function SchoolDetailPage() {
                     ) : (
                       students.slice(0, 50).map(student => (
                         <TableRow key={student.id}>
-                          <TableCell className="font-mono text-sm">{student.studentId}</TableCell>
+                          <TableCell className="font-mono text-sm">{student.studentIdNumber}</TableCell>
                           <TableCell className="font-medium">
                             {student.firstName} {student.lastName}
                           </TableCell>
@@ -480,8 +482,8 @@ export default function SchoolDetailPage() {
                           <TableCell>{member.department || 'N/A'}</TableCell>
                           <TableCell>{member.email}</TableCell>
                           <TableCell>
-                            <Badge variant={member.status === 'active' ? 'default' : 'secondary'}>
-                              {member.status}
+                            <Badge variant={member.isActive ? 'default' : 'secondary'}>
+                              {member.isActive ? 'Active' : 'Inactive'}
                             </Badge>
                           </TableCell>
                         </TableRow>
@@ -499,7 +501,7 @@ export default function SchoolDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Classes</CardTitle>
-              <CardDescription>All classes in this school</CardDescription>
+              <CardDescription>All classes in this organization</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="border rounded-lg overflow-hidden">
@@ -523,11 +525,11 @@ export default function SchoolDetailPage() {
                     ) : (
                       classes.map(cls => (
                         <TableRow key={cls.id}>
-                          <TableCell className="font-medium">{cls.name}</TableCell>
+                          <TableCell className="font-medium">{cls.className}</TableCell>
                           <TableCell>{cls.gradeLevel}</TableCell>
                           <TableCell>{cls.section}</TableCell>
                           <TableCell>{cls.capacity}</TableCell>
-                          <TableCell>{cls.teacherName || 'Not Assigned'}</TableCell>
+                          <TableCell>{cls.classTeacherName || 'Not Assigned'}</TableCell>
                         </TableRow>
                       ))
                     )}
@@ -543,7 +545,7 @@ export default function SchoolDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Payment History</CardTitle>
-              <CardDescription>All subscription payments for this school</CardDescription>
+              <CardDescription>All subscription payments for this organization</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="border rounded-lg overflow-hidden">
@@ -607,11 +609,11 @@ export default function SchoolDetailPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <Lock className="h-5 w-5" />
-              Lock School Account
+              Lock Organization Account
             </DialogTitle>
             <DialogDescription>
-              This will prevent all users from this school from accessing the system. Are you sure you want to
-              lock <strong>{school.name}</strong>?
+              This will prevent all users from this organization from accessing the system. Are you sure you want to
+              lock <strong>{organization.name}</strong>?
             </DialogDescription>
           </DialogHeader>
 
@@ -643,10 +645,10 @@ export default function SchoolDetailPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-green-600">
               <Unlock className="h-5 w-5" />
-              Unlock School Account
+              Unlock Organization Account
             </DialogTitle>
             <DialogDescription>
-              This will restore access for all users from <strong>{school.name}</strong>. Continue?
+              This will restore access for all users from <strong>{organization.name}</strong>. Continue?
             </DialogDescription>
           </DialogHeader>
 

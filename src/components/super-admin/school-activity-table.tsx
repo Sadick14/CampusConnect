@@ -1,3 +1,4 @@
+
 /**
  * School Activity Table for Super Admin Dashboard
  */
@@ -46,8 +47,8 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
   };
 
   const filteredAndSortedData = data
-    .filter(school => 
-      school.name.toLowerCase().includes(searchQuery.toLowerCase())
+    .filter(org => 
+      org.name.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => {
       let aValue: any, bValue: any;
@@ -147,9 +148,9 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <School className="h-5 w-5" />
-          School Activity
+          Organization Activity
         </CardTitle>
-        <CardDescription>Real-time activity across all schools</CardDescription>
+        <CardDescription>Real-time activity across all organizations</CardDescription>
       </CardHeader>
       <CardContent>
         {/* Search */}
@@ -157,7 +158,7 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search schools..."
+              placeholder="Search organizations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -178,7 +179,7 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
                       onClick={() => handleSort('name')}
                       className="font-semibold hover:bg-transparent"
                     >
-                      School <SortIcon field="name" />
+                      Organization <SortIcon field="name" />
                     </Button>
                   </th>
                   <th className="text-left p-3">Status</th>
@@ -236,30 +237,30 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSortedData.map((school) => (
-                  <tr key={school.id} className="border-t hover:bg-muted/30 transition-colors">
+                {filteredAndSortedData.map((org) => (
+                  <tr key={org.id} className="border-t hover:bg-muted/30 transition-colors">
                     <td className="p-3">
-                      <div className="font-medium">{school.name}</div>
+                      <div className="font-medium">{org.name}</div>
                     </td>
                     <td className="p-3">
-                      {getSubscriptionBadge(school.subscriptionStatus)}
+                      {getSubscriptionBadge(org.subscriptionStatus)}
                     </td>
                     <td className="text-center p-3">
-                      <span className="font-medium">{school.totalUsers}</span>
+                      <span className="font-medium">{org.totalUsers}</span>
                     </td>
                     <td className="text-center p-3">
-                      <span className="text-blue-600 font-medium">{school.studentCount}</span>
+                      <span className="text-blue-600 font-medium">{org.studentCount}</span>
                     </td>
                     <td className="text-center p-3">
-                      <span className="text-purple-600 font-medium">{school.teacherCount}</span>
+                      <span className="text-purple-600 font-medium">{org.teacherCount}</span>
                     </td>
                     <td className="text-right p-3">
                       <span className="font-medium text-emerald-600">
-                        {formatCurrency(school.revenue)}
+                        {formatCurrency(org.revenue)}
                       </span>
                     </td>
                     <td className="text-right p-3 text-muted-foreground">
-                      {formatDate(school.lastActivity)}
+                      {formatDate(org.lastActivity)}
                     </td>
                     <td className="text-center p-3">
                       <Button 
@@ -267,7 +268,7 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
                         size="sm"
                         asChild
                       >
-                        <Link href={`/super-admin/schools/${school.id}`}>
+                        <Link href={`/super-admin/organizations/${org.id}`}>
                           View
                         </Link>
                       </Button>
@@ -277,7 +278,7 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
                 {filteredAndSortedData.length === 0 && (
                   <tr>
                     <td colSpan={8} className="text-center p-8 text-muted-foreground">
-                      {searchQuery ? 'No schools found matching your search' : 'No school activity data available'}
+                      {searchQuery ? 'No organizations found matching your search' : 'No organization activity data available'}
                     </td>
                   </tr>
                 )}
@@ -288,7 +289,7 @@ export function SchoolActivityTable({ data, loading }: SchoolActivityTableProps)
 
         {/* Footer Info */}
         <div className="mt-4 text-sm text-muted-foreground">
-          Showing {filteredAndSortedData.length} of {data.length} schools
+          Showing {filteredAndSortedData.length} of {data.length} organizations
         </div>
       </CardContent>
     </Card>
