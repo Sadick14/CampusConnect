@@ -54,8 +54,8 @@ export default function useSuperAdminStats() {
         schoolsSnap.forEach((s) => {
           const d = s.data();
           schoolDataMap.set(s.id, d);
-          if (d.status === 'active') activeSchools++;
-          else if (d.status === 'suspended') suspendedSchools++;
+          if (d.subscriptionStatus === 'active' || d.subscriptionStatus === 'trial') activeSchools++;
+          else if (d.subscriptionStatus === 'suspended') suspendedSchools++;
           else inactiveSchools++;
         });
 
@@ -70,7 +70,7 @@ export default function useSuperAdminStats() {
           const d = u.data();
           if (d.role === 'student') totalStudents++;
           else if (d.role === 'teacher') totalTeachers++;
-          else if (d.role === 'school_admin') totalAdmins++;
+          else if (d.role === 'school_admin' || d.role === 'organization_owner') totalAdmins++;
 
           const schoolId = d.schoolId || 'unknown';
           const arr = usersBySchool.get(schoolId) || [];
@@ -95,7 +95,7 @@ export default function useSuperAdminStats() {
 
           if (status === 'approved') {
             totalRevenue += amount;
-            const paidAt = d.paidAt?.toDate?.() || d.createdAt?.toDate?.();
+            const paidAt = d.reviewedAt?.toDate?.() || d.createdAt?.toDate?.();
             if (paidAt && paidAt.getMonth() === currentMonth && paidAt.getFullYear() === currentYear) {
               monthlyRevenue += amount;
             }
@@ -111,7 +111,7 @@ export default function useSuperAdminStats() {
         });
 
         // Active academic sessions
-        const activeSessions = subscriptionsSnap.docs.filter(s => s.data()?.status === 'active').length;
+        const activeSessions = subscriptionsSnap.docs.filter(s => s.data()?.subscriptionStatus === 'active').length;
 
         const computedSystemStats: SystemStats = {
           totalSchools,
@@ -142,7 +142,7 @@ export default function useSuperAdminStats() {
         paymentsSnap.forEach((p) => {
           const d = p.data();
           const amount = d.amount || 0;
-          const paymentDate = d.paidAt?.toDate?.() || d.createdAt?.toDate?.() || new Date();
+          const paymentDate = d.reviewedAt?.toDate?.() || d.createdAt?.toDate?.() || new Date();
 
           if (paymentDate >= today) daily += amount;
           if (paymentDate >= weekAgo) weekly += amount;

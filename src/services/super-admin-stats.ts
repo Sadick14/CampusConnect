@@ -86,8 +86,8 @@ export async function getSystemStats(): Promise<SystemStats> {
     
     schoolsSnap.forEach((doc) => {
       const data = doc.data();
-      if (data.status === 'active') activeSchools++;
-      else if (data.status === 'suspended') suspendedSchools++;
+      if (data.subscriptionStatus === 'active' || data.subscriptionStatus === 'trial') activeSchools++;
+      else if (data.subscriptionStatus === 'suspended') suspendedSchools++;
       else inactiveSchools++;
     });
     
@@ -103,7 +103,7 @@ export async function getSystemStats(): Promise<SystemStats> {
       const data = doc.data();
       if (data.role === 'student') totalStudents++;
       else if (data.role === 'teacher') totalTeachers++;
-      else if (data.role === 'school_admin') totalAdmins++;
+      else if (data.role === 'school_admin' || data.role === 'organization_owner') totalAdmins++;
     });
     
     const totalUsers = usersSnap.size;
@@ -136,7 +136,7 @@ export async function getSystemStats(): Promise<SystemStats> {
     
     // Count active academic sessions
     const subscriptionsRef = collection(db, 'subscriptions');
-    const activeSessionsQuery = query(subscriptionsRef, where('status', '==', 'active'));
+    const activeSessionsQuery = query(subscriptionsRef, where('subscriptionStatus', '==', 'active'));
     const activeSessionsSnap = await getDocs(activeSessionsQuery);
     
     return {
@@ -221,8 +221,8 @@ export async function getSchoolActivities(): Promise<SchoolActivity[]> {
         totalUsers: schoolUsersSnap.size,
         studentCount,
         teacherCount,
-        subscriptionStatus: subscriptionData?.status || 'trial',
-        subscriptionExpiry: subscriptionData?.expiresAt?.toDate?.()?.toISOString(),
+        subscriptionStatus: subscriptionData?.subscriptionStatus || 'trial',
+        subscriptionExpiry: subscriptionData?.subscriptionEndDate?.toDate?.()?.toISOString(),
         revenue: totalRevenue,
         totalRevenue,
       });
@@ -268,7 +268,7 @@ export async function getRevenueMetrics(): Promise<RevenueMetrics> {
     paymentsSnap.forEach((doc) => {
       const data = doc.data();
       const amount = data.amount || 0;
-      const paymentDate = data.paidAt?.toDate?.() || data.createdAt?.toDate?.() || new Date();
+      const paymentDate = data.reviewedAt?.toDate?.() || data.createdAt?.toDate?.() || new Date();
       
       // Daily
       if (paymentDate >= today) daily += amount;
@@ -340,7 +340,7 @@ export async function getUserGrowthData(days: number = 30): Promise<UserGrowth[]
       
       if (data.role === 'student') existing.students++;
       else if (data.role === 'teacher') existing.teachers++;
-      else if (data.role === 'school_admin') existing.admins++;
+      else if (data.role === 'school_admin' || data.role === 'organization_owner') existing.admins++;
       
       growthMap.set(dateKey, existing);
     });
