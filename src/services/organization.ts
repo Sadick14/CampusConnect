@@ -1,4 +1,3 @@
-
 import { 
   collection, 
   doc, 
@@ -22,18 +21,18 @@ const ORGANIZATIONS_COLLECTION = 'organizations';
  * Generate a unique license key for the organization
  */
 function generateLicenseKey(): string {
-  const timestamp = Date.now().toString(36);
-  const randomPart = Math.random().toString(36).substring(2, 8);
-  return `CC-${timestamp}-${randomPart}`.toUpperCase();
+  const prefix = 'SYN'; // Syntra
+  const randomPart = Math.random().toString(36).substring(2, 10).toUpperCase();
+  return `${prefix}-${randomPart}`;
 }
 
 /**
- * Calculate trial dates (14 days from creation)
+ * Calculate trial dates (30 days from creation as per schema)
  */
 function calculateTrialDates(createdAt: Date) {
   const trialStart = createdAt;
   const trialEnd = new Date(createdAt);
-  trialEnd.setDate(trialEnd.getDate() + (SUBSCRIPTION_PLANS.TRIAL.duration || 14));
+  trialEnd.setDate(trialEnd.getDate() + (SUBSCRIPTION_PLANS.TRIAL.duration || 30));
 
   return {
     trialStartDate: Timestamp.fromDate(trialStart),
@@ -115,36 +114,10 @@ export async function createOrganization(
 ): Promise<Organization> {
   try {
     const now = new Date();
-    
-    // Check if user already has organizations
     const hasExistingOrgs = await userHasExistingOrganizations(ownerId);
     
-    let subscriptionStatus: Organization['subscriptionStatus'];
-    let subscriptionType: Organization['subscriptionType'];
-    let isTrialActive: boolean;
-    let daysRemaining: number;
-    let trialStartDate: Timestamp;
-    let trialEndDate: Timestamp;
-    
-    if (hasExistingOrgs) {
-      // Subsequent organizations need payment - no trial
-      subscriptionStatus = 'pending_payment';
-      subscriptionType = 'BASIC'; // Default to BASIC plan
-      isTrialActive = false;
-      daysRemaining = 0;
-      trialStartDate = Timestamp.fromDate(now);
-      trialEndDate = Timestamp.fromDate(now); // No trial period
-    } else {
-      // First organization gets 14-day trial
-      const trialDates = calculateTrialDates(now);
-      subscriptionStatus = 'trial';
-      subscriptionType = 'TRIAL';
-      isTrialActive = true;
-      daysRemaining = SUBSCRIPTION_PLANS.TRIAL.duration;
-      trialStartDate = trialDates.trialStartDate;
-      trialEndDate = trialDates.trialEndDate;
-    }
-    
+    const { trialStartDate, trialEndDate } = calculateTrialDates(now);
+
     const orgDoc: Omit<OrganizationFirestoreDoc, 'createdAt' | 'updatedAt'> = {
       name: organizationData.name,
       type: organizationData.type,
@@ -156,12 +129,10 @@ export async function createOrganization(
       phone: null,
       website: null,
       logoUrl: null,
-      
-      // Subscription & Billing
-      subscriptionStatus,
-      subscriptionType,
-      isTrialActive,
-      daysRemaining,
+      subscriptionStatus: 'trial',
+      subscriptionType: 'TRIAL',
+      isTrialActive: true,
+      daysRemaining: SUBSCRIPTION_PLANS.TRIAL.duration,
       trialStartDate,
       trialEndDate,
       subscriptionStartDate: null,
@@ -169,9 +140,7 @@ export async function createOrganization(
       nextBillingDate: null,
       lastPaymentDate: null,
       totalAmountPaid: 0,
-      paymentStatus: hasExistingOrgs ? 'pending' : 'none',
-
-      // Access Control
+      paymentStatus: 'none',
       memberIds: [ownerId],
       memberCount: 1,
     };
@@ -182,7 +151,6 @@ export async function createOrganization(
       updatedAt: Timestamp.fromDate(now),
     });
 
-    // Return the created organization
     const createdDoc = await getDoc(docRef);
     if (!createdDoc.exists()) {
       throw new Error('Failed to retrieve created organization');
@@ -213,7 +181,6 @@ export async function getUserOrganizations(userId: string): Promise<Organization
       organizations.push(firestoreToOrganization(doc.id, data));
     });
 
-    // Sort by creation date in JavaScript (newest first)
     return organizations.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (error) {
     console.error('Error fetching user organizations:', error);
@@ -239,7 +206,6 @@ export async function getUserMemberOrganizations(userId: string): Promise<Organi
       organizations.push(firestoreToOrganization(doc.id, data));
     });
 
-    // Sort by creation date in JavaScript (newest first)
     return organizations.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (error) {
     console.error('Error fetching member organizations:', error);
@@ -346,7 +312,7 @@ export async function removeOrganizationMember(organizationId: string, userId: s
 }
 
 /**
- * Update organization subscription status (for payment processing)
+ * Update organization subscription status
  */
 export async function updateOrganizationSubscription(
   organizationId: string,
@@ -369,32 +335,14 @@ export async function updateOrganizationSubscription(
       updatedAt: Timestamp.now(),
     };
 
-    if (subscriptionData.subscriptionType) {
-      updateData.subscriptionType = subscriptionData.subscriptionType;
-    }
-    if (subscriptionData.paymentStatus) {
-      updateData.paymentStatus = subscriptionData.paymentStatus;
-    }
-    if (subscriptionData.subscriptionStartDate) {
-      updateData.subscriptionStartDate = Timestamp.fromDate(new Date(subscriptionData.subscriptionStartDate));
-    }
-    if (subscriptionData.subscriptionEndDate) {
-      updateData.subscriptionEndDate = Timestamp.fromDate(new Date(subscriptionData.subscriptionEndDate));
-    }
-    if (subscriptionData.nextBillingDate) {
-      updateData.nextBillingDate = Timestamp.fromDate(new Date(subscriptionData.nextBillingDate));
-    }
-    if (subscriptionData.lastPaymentDate) {
-      updateData.lastPaymentDate = Timestamp.fromDate(new Date(subscriptionData.lastPaymentDate));
-    }
-    if (subscriptionData.totalAmountPaid !== undefined) {
-      updateData.totalAmountPaid = subscriptionData.totalAmountPaid;
-    }
-
-    // If subscription is active, mark trial as inactive
-    if (subscriptionData.subscriptionStatus === 'active') {
-      updateData.isTrialActive = false;
-    }
+    if (subscriptionData.subscriptionType) updateData.subscriptionType = subscriptionData.subscriptionType;
+    if (subscriptionData.paymentStatus) updateData.paymentStatus = subscriptionData.paymentStatus;
+    if (subscriptionData.subscriptionStartDate) updateData.subscriptionStartDate = Timestamp.fromDate(new Date(subscriptionData.subscriptionStartDate));
+    if (subscriptionData.subscriptionEndDate) updateData.subscriptionEndDate = Timestamp.fromDate(new Date(subscriptionData.subscriptionEndDate));
+    if (subscriptionData.nextBillingDate) updateData.nextBillingDate = Timestamp.fromDate(new Date(subscriptionData.nextBillingDate));
+    if (subscriptionData.lastPaymentDate) updateData.lastPaymentDate = Timestamp.fromDate(new Date(subscriptionData.lastPaymentDate));
+    if (subscriptionData.totalAmountPaid !== undefined) updateData.totalAmountPaid = subscriptionData.totalAmountPaid;
+    if (subscriptionData.subscriptionStatus === 'active') updateData.isTrialActive = false;
 
     await updateDoc(docRef, updateData);
   } catch (error) {
@@ -404,7 +352,7 @@ export async function updateOrganizationSubscription(
 }
 
 /**
- * Update days remaining for all organizations (for scheduled tasks)
+ * Update days remaining for all organizations
  */
 export async function updateOrganizationsDaysRemaining(): Promise<void> {
   try {
@@ -417,39 +365,35 @@ export async function updateOrganizationsDaysRemaining(): Promise<void> {
 
     const batch = snapshot.docs.map(async (docSnap) => {
       const data = docSnap.data() as OrganizationFirestoreDoc;
+      const endDate = data.isTrialActive ? data.trialEndDate : data.subscriptionEndDate;
       
-      let daysRemaining = 0;
-      if (data.isTrialActive) {
-        daysRemaining = calculateDaysRemaining(data.trialEndDate);
-      } else if (data.subscriptionEndDate) {
-        daysRemaining = calculateDaysRemaining(data.subscriptionEndDate);
-      }
-
-      // Update organization with new days remaining
-      await updateDoc(doc(getDb(), ORGANIZATIONS_COLLECTION, docSnap.id), {
-        daysRemaining,
-        updatedAt: Timestamp.now(),
-      });
-
-      // Lock organization if trial/subscription expired
-      if (daysRemaining === 0) {
+      if(endDate) {
+        const daysRemaining = calculateDaysRemaining(endDate);
+        
         await updateDoc(doc(getDb(), ORGANIZATIONS_COLLECTION, docSnap.id), {
-          subscriptionStatus: 'expired',
-          isTrialActive: false,
+          daysRemaining,
           updatedAt: Timestamp.now(),
         });
+
+        if (daysRemaining === 0) {
+          await updateDoc(doc(getDb(), ORGANIZATIONS_COLLECTION, docSnap.id), {
+            subscriptionStatus: 'expired',
+            isTrialActive: false,
+            updatedAt: Timestamp.now(),
+          });
+        }
       }
     });
 
     await Promise.all(batch);
   } catch (error) {
-    console.error('Error updating organizations days remaining:', error);
-    throw new Error('Failed to update organizations days remaining');
+    console.error('Error updating days remaining:', error);
+    throw new Error('Failed to update days remaining');
   }
 }
 
 /**
- * Delete an organization (only by owner)
+ * Delete an organization
  */
 export async function deleteOrganization(organizationId: string, userId: string): Promise<void> {
   try {
@@ -470,5 +414,18 @@ export async function deleteOrganization(organizationId: string, userId: string)
   } catch (error) {
     console.error('Error deleting organization:', error);
     throw new Error('Failed to delete organization');
+  }
+}
+
+/**
+ * Get all organizations for super admin view
+ */
+export async function getAllOrganizations(): Promise<Organization[]> {
+  try {
+    const snapshot = await getDocs(collection(getDb(), ORGANIZATIONS_COLLECTION));
+    return snapshot.docs.map(doc => firestoreToOrganization(doc.id, doc.data() as OrganizationFirestoreDoc));
+  } catch (error) {
+    console.error('Error fetching all organizations:', error);
+    throw new Error('Failed to fetch all organizations');
   }
 }

@@ -1,46 +1,36 @@
 import { z } from 'zod';
 import { Timestamp } from 'firebase/firestore';
 
-/**
- * Class/Grade Definition
- * Represents a school class or grade level
- */
 export interface SchoolClass {
   id: string;
-  schoolId: string;
-  className: string; // e.g., "Grade 10A", "Class 8B", "JSS 2C"
-  gradeLevel: string; // e.g., "Grade 10", "JSS 2", "SSS 3"
-  section: string; // e.g., "A", "B", "C" - for parallel classes
-  academicYear: string; // e.g., "2024/2025"
-  capacity: number; // Maximum number of students
-  currentEnrollment: number; // Current number of students
-  classTeacherId?: string; // ID of the main class teacher
-  classTeacherName?: string; // Name of the main class teacher
-  subjects: ClassSubject[]; // Subjects taught in this class
+  organizationId: string;
+  className: string;
+  gradeLevel: string;
+  section: string;
+  academicYear: string;
+  capacity: number;
+  currentEnrollment: number;
+  classTeacherId?: string;
+  classTeacherName?: string;
+  subjects: ClassSubject[];
   isActive: boolean;
   description?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-/**
- * Subject taught in a class
- */
 export interface ClassSubject {
   subjectId: string;
   subjectName: string;
-  teacherId?: string; // Assigned teacher for this subject
+  teacherId?: string;
   teacherName?: string;
-  periodsPerWeek: number; // Number of periods per week
+  periodsPerWeek: number;
   isActive: boolean;
 }
 
-/**
- * Teacher Assignment to Class
- */
 export interface TeacherAssignment {
   id: string;
-  schoolId: string;
+  organizationId: string;
   teacherId: string;
   teacherName: string;
   classId: string;
@@ -50,32 +40,26 @@ export interface TeacherAssignment {
   academicYear: string;
   periodsPerWeek: number;
   isActive: boolean;
-  assignedBy: string; // User ID who assigned
+  assignedBy: string;
   assignedAt: Timestamp;
   notes?: string;
 }
 
-/**
- * Subject Definition
- */
 export interface Subject {
   id: string;
-  schoolId: string;
-  name: string; // e.g., "Mathematics", "English Language"
-  code: string; // e.g., "MATH", "ENG"
-  category: 'core' | 'elective' | 'practical'; // Subject category
+  organizationId: string;
+  name: string;
+  code: string;
+  category: 'core' | 'elective' | 'practical';
   description?: string;
   isActive: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-/**
- * Class Timetable Entry
- */
 export interface TimetableEntry {
   id: string;
-  schoolId: string;
+  organizationId: string;
   classId: string;
   className: string;
   subjectId: string;
@@ -83,24 +67,19 @@ export interface TimetableEntry {
   teacherId: string;
   teacherName: string;
   dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-  period: number; // Period number (1, 2, 3, etc.)
-  startTime: string; // e.g., "08:00"
-  endTime: string; // e.g., "08:45"
-  room?: string; // Classroom or room number
+  period: number;
+  startTime: string;
+  endTime: string;
+  room?: string;
   academicYear: string;
   isActive: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-/**
- * Zod Validation Schemas
- */
-
-// Subject Schema
 export const SubjectSchema = z.object({
   id: z.string().optional(),
-  schoolId: z.string(),
+  organizationId: z.string(),
   name: z.string().min(1, 'Subject name required'),
   code: z.string().min(1, 'Subject code required').toUpperCase(),
   category: z.enum(['core', 'elective', 'practical']),
@@ -110,7 +89,6 @@ export const SubjectSchema = z.object({
   updatedAt: z.any().optional(),
 });
 
-// Class Subject Schema
 export const ClassSubjectSchema = z.object({
   subjectId: z.string(),
   subjectName: z.string(),
@@ -120,10 +98,9 @@ export const ClassSubjectSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-// School Class Schema
 export const SchoolClassSchema = z.object({
   id: z.string().optional(),
-  schoolId: z.string(),
+  organizationId: z.string(),
   className: z.string().min(1, 'Class name required'),
   gradeLevel: z.string().min(1, 'Grade level required'),
   section: z.string().min(1, 'Section required'),
@@ -139,10 +116,9 @@ export const SchoolClassSchema = z.object({
   updatedAt: z.any().optional(),
 });
 
-// Teacher Assignment Schema
 export const TeacherAssignmentSchema = z.object({
   id: z.string().optional(),
-  schoolId: z.string(),
+  organizationId: z.string(),
   teacherId: z.string(),
   teacherName: z.string(),
   classId: z.string(),
@@ -157,10 +133,9 @@ export const TeacherAssignmentSchema = z.object({
   notes: z.string().optional(),
 });
 
-// Timetable Entry Schema
 export const TimetableEntrySchema = z.object({
   id: z.string().optional(),
-  schoolId: z.string(),
+  organizationId: z.string(),
   classId: z.string(),
   className: z.string(),
   subjectId: z.string(),
@@ -183,3 +158,4 @@ export type ClassSubjectInput = z.infer<typeof ClassSubjectSchema>;
 export type SchoolClassInput = z.infer<typeof SchoolClassSchema>;
 export type TeacherAssignmentInput = z.infer<typeof TeacherAssignmentSchema>;
 export type TimetableEntryInput = z.infer<typeof TimetableEntrySchema>;
+export type Class = SchoolClass; // Alias for consistency

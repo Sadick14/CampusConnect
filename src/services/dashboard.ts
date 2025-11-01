@@ -351,7 +351,6 @@ export async function getGradeDistribution(organizationId: string) {
     return Object.entries(distribution)
       .map(([grade, count]) => ({ grade, count }))
       .sort((a, b) => {
-        // Try to sort naturally (Grade 1, Grade 2, etc.)
         const numA = parseInt(a.grade.match(/\d+/)?.[0] || '0');
         const numB = parseInt(b.grade.match(/\d+/)?.[0] || '0');
         return numA - numB;

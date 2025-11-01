@@ -25,12 +25,12 @@ export async function getStaff(id: string): Promise<StaffMember | null> {
 }
 
 export async function getSchoolStaff(
-  schoolId: string,
+  organizationId: string,
   opts?: { role?: StaffMember['role']; onlyActive?: boolean }
 ): Promise<StaffMember[]> {
   const db = getDb();
   const col = collection(db, COLLECTION);
-  const constraints: any[] = [where('schoolId', '==', schoolId)];
+  const constraints: any[] = [where('organizationId', '==', organizationId)];
   if (opts?.role) constraints.push(where('role', '==', opts.role));
   if (opts?.onlyActive) constraints.push(where('isActive', '==', true));
   constraints.push(orderBy('name', 'asc'));
@@ -43,7 +43,7 @@ export async function createStaff(data: StaffMemberInput): Promise<StaffMember> 
   const db = getDb();
   const now = Timestamp.now();
   const toSave = {
-    schoolId: data.schoolId,
+    organizationId: data.organizationId,
     name: data.name,
     email: data.email,
     phone: data.phone ?? null,
@@ -74,6 +74,6 @@ export async function deleteStaff(id: string): Promise<void> {
   await deleteDoc(ref);
 }
 
-export async function getTeachers(schoolId: string): Promise<StaffMember[]> {
-  return getSchoolStaff(schoolId, { role: 'teacher', onlyActive: true });
+export async function getTeachers(organizationId: string): Promise<StaffMember[]> {
+  return getSchoolStaff(organizationId, { role: 'teacher', onlyActive: true });
 }

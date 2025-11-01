@@ -47,16 +47,16 @@ import { getUserCurrentOrganization, setUserCurrentOrganization } from "@/servic
 import { formatCurrency } from "@/lib/currency";
 
 const dashboardItems = [
-  { title: "Schools", href: "/schools", icon: SchoolIcon, description: "Manage registered schools", roles: ['superadmin'] },
-  { title: "Users", href: "/users", icon: Users, description: "Administer user accounts", roles: ['superadmin', 'school_admin', 'organization_owner'] },
-  { title: "Students", href: "/students", icon: GraduationCap, description: "Student records and profiles", roles: ['school_admin', 'organization_owner', 'teacher'] },
-  { title: "Staff", href: "/staff", icon: Briefcase, description: "Manage teaching and non-teaching staff", roles: ['school_admin', 'organization_owner'] },
-  { title: "Attendance", href: "/attendance", icon: ClipboardCheck, description: "Track student attendance", roles: ['school_admin', 'organization_owner', 'teacher'] },
-  { title: "Grades", href: "/grades", icon: ClipboardList, description: "Manage grades and assessments", roles: ['school_admin', 'organization_owner', 'teacher'] },
-  { title: "Fees", href: "/fees", icon: CreditCard, description: "Oversee fee collection and status", roles: ['school_admin', 'organization_owner'] },
-  { title: "Expenditure", href: "/expenditure", icon: Receipt, description: "Track school expenditures", roles: ['school_admin', 'organization_owner'] },
-  { title: "Timetables", href: "/timetables", icon: CalendarClock, description: "Create and manage timetables", roles: ['school_admin', 'organization_owner', 'teacher', 'student'] },
-  { title: "AI Reports", href: "/reports", icon: Sparkles, description: "Generate AI-powered reports", roles: ['school_admin', 'organization_owner'] },
+  { title: "Organizations", href: "/organizations", icon: Building2, description: "Manage organizations", roles: ['superadmin'] },
+  { title: "Users", href: "/users", icon: Users, description: "Administer user accounts", roles: ['superadmin', 'organization_owner'] },
+  { title: "Students", href: "/students", icon: GraduationCap, description: "Student records and profiles", roles: ['organization_owner', 'teacher'] },
+  { title: "Staff", href: "/staff", icon: Briefcase, description: "Manage teaching and non-teaching staff", roles: ['organization_owner'] },
+  { title: "Attendance", href: "/attendance", icon: ClipboardCheck, description: "Track student attendance", roles: ['organization_owner', 'teacher'] },
+  { title: "Grades", href: "/grades", icon: ClipboardList, description: "Manage grades and assessments", roles: ['organization_owner', 'teacher'] },
+  { title: "Fees", href: "/fees", icon: CreditCard, description: "Oversee fee collection and status", roles: ['organization_owner'] },
+  { title: "Expenditure", href: "/expenditure", icon: Receipt, description: "Track school expenditures", roles: ['organization_owner'] },
+  { title: "Timetables", href: "/timetables", icon: CalendarClock, description: "Create and manage timetables", roles: ['organization_owner', 'teacher', 'student'] },
+  { title: "AI Reports", href: "/reports", icon: Sparkles, description: "Generate AI-powered reports", roles: ['organization_owner'] },
 ];
 
 export default function HomePage() {
@@ -214,7 +214,7 @@ export default function HomePage() {
     
     // Organization owners have full admin privileges
     if (currentUser.role === 'organization_owner') {
-      return item.roles.includes('school_admin') || item.roles.includes('organization_owner');
+      return item.roles.includes('organization_owner');
     }
     
     return item.roles.includes(currentUser.role);
