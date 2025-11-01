@@ -38,8 +38,8 @@ export function SidebarNav() {
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['organization_owner', 'teacher', 'student'] },
     
     // Super Admin Only Section
-    { href: '/super-admin', label: 'Dashboard', icon: LayoutDashboard, roles: ['superadmin'] },
-    { href: '/super-admin', label: 'Organizations', icon: Building2, roles: ['superadmin'] },
+    { href: '/super-admin', label: 'Super Dashboard', icon: Shield, roles: ['superadmin'] },
+    { href: '/super-admin/organizations', label: 'Organizations', icon: Building2, roles: ['superadmin'] },
     { href: '/super-admin/analytics', label: 'Analytics', icon: TrendingUp, roles: ['superadmin'] },
     
     // Organization Owner & Staff Section
@@ -56,6 +56,7 @@ export function SidebarNav() {
     { href: '/reports', label: 'AI Reports', icon: Sparkles, roles: ['organization_owner'] },
     
     // Common Section
+    { href: '/organizations/subscription', label: 'Subscription', icon: DollarSign, roles: ['organization_owner'] },
     { href: '/settings', label: 'Settings', icon: Settings, roles: ['superadmin', 'organization_owner', 'teacher', 'student'] },
   ];
 
