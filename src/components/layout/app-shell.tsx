@@ -18,10 +18,10 @@ import { SidebarNav } from './sidebar-nav';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut, Moon, Sun, UserCircle, ChevronsUpDown, Loader2, Settings } from 'lucide-react'; // Added Settings icon
+import { LogOut, Moon, Sun, UserCircle, ChevronsUpDown, Loader2, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
 

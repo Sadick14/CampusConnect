@@ -70,6 +70,56 @@ export interface School {
    * Optional URL for the school's logo image stored in Firebase Storage.
    */
   logoUrl?: string | null;
+  
+  // Subscription & Billing Fields
+  /**
+   * Current subscription status of the school.
+   */
+  subscriptionStatus: 'trial' | 'active' | 'expired' | 'locked' | 'pending_payment' | 'suspended';
+  /**
+   * Current subscription type/plan.
+   */
+  subscriptionType: 'TRIAL' | 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+  /**
+   * Trial start date (ISO string format).
+   */
+  trialStartDate: string;
+  /**
+   * Trial end date (ISO string format).
+   */
+  trialEndDate: string;
+  /**
+   * Whether the trial is currently active.
+   */
+  isTrialActive: boolean;
+  /**
+   * Number of days remaining in trial or subscription.
+   */
+  daysRemaining: number;
+  /**
+   * Subscription start date (ISO string format) - null during trial.
+   */
+  subscriptionStartDate?: string | null;
+  /**
+   * Subscription end date (ISO string format) - null during trial.
+   */
+  subscriptionEndDate?: string | null;
+  /**
+   * Next billing date (ISO string format) - null during trial.
+   */
+  nextBillingDate?: string | null;
+  /**
+   * Last payment date (ISO string format) - null if no payment made.
+   */
+  lastPaymentDate?: string | null;
+  /**
+   * Total amount paid in GHS.
+   */
+  totalAmountPaid: number;
+  /**
+   * Current payment status.
+   */
+  paymentStatus: 'pending' | 'approved' | 'rejected' | 'none';
 }
 
 /**
@@ -86,4 +136,18 @@ export interface SchoolFirestoreDoc {
   phone?: string | null;
   website?: string | null;
   logoUrl?: string | null;
+  
+  // Subscription & Billing Fields
+  subscriptionStatus: 'trial' | 'active' | 'expired' | 'locked' | 'pending_payment' | 'suspended';
+  subscriptionType: 'TRIAL' | 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+  trialStartDate: Timestamp;
+  trialEndDate: Timestamp;
+  isTrialActive: boolean;
+  daysRemaining: number;
+  subscriptionStartDate?: Timestamp | null;
+  subscriptionEndDate?: Timestamp | null;
+  nextBillingDate?: Timestamp | null;
+  lastPaymentDate?: Timestamp | null;
+  totalAmountPaid: number;
+  paymentStatus: 'pending' | 'approved' | 'rejected' | 'none';
 }

@@ -44,18 +44,21 @@ export default function RegisterSchoolPage() {
     try {
       // Call the updated registerSchool function which now handles Auth creation
       const newSchool: School = await registerSchool(values);
+      
       toast({
-        title: "School Registered & Admin Created!",
+        title: "School Successfully Added!",
         description: (
           <div className="space-y-2">
-            <p>{`${newSchool.name} has been successfully registered.`}</p>
-            <p>Admin authentication account created for: <strong className="font-mono">{newSchool.adminEmail}</strong></p>
-            <p>Firestore profile created with UID: <strong className="font-mono text-primary">{newSchool.adminUid}</strong></p>
-            <p className="text-xs text-muted-foreground">The school admin can now log in using their email and the password provided.</p>
+            <p>{`${newSchool.name} has been added to the system.`}</p>
+            <p>Admin account: <strong className="font-mono">{newSchool.adminEmail}</strong></p>
+            <p>Password: <strong className="font-mono text-primary">{values.adminPassword}</strong></p>
+            <p>Trial Status: <strong className="text-green-600">{newSchool.daysRemaining} days remaining</strong></p>
+            <p className="text-xs text-muted-foreground">📋 Share these credentials with the school admin for immediate access.</p>
           </div>
         ),
-        duration: 10000, // Keep toast longer
+        duration: 15000, // Keep toast longer so admin can copy credentials
       });
+      
       router.push("/schools"); // Redirect after successful registration
     } catch (error) {
       console.error("Error registering school:", error);
@@ -74,7 +77,7 @@ export default function RegisterSchoolPage() {
     <div>
       <PageHeader
         title="Register New School"
-        description="Add a new school and create its primary administrator account."
+        description="Add a new school to the system with automatic 14-day trial and admin account creation."
       />
       <Card className="w-full max-w-2xl mx-auto shadow-lg">
         <CardHeader>

@@ -21,7 +21,8 @@ import { Building, Loader2, Upload, Image as ImageIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { getSchoolById, updateSchoolProfile, UpdateSchoolProfileSchema, type UpdateSchoolProfileData, type School } from '@/services/school';
+import { getSchoolById, updateSchoolProfile, type School } from '@/services/school';
+import { UpdateSchoolProfileSchema, type UpdateSchoolProfileData } from '@/schemas/school';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 

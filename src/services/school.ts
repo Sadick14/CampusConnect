@@ -1,15 +1,25 @@
 'use server';
 /**
- * @fileOverview Service functions for managing school data.
- * WARNING: Currently uses TEMPORARY In-Memory storage. Not for production.
+ * @fileOverview Service functions for managing school data in Firestore.
+ * PRODUCTION VERSION - Uses Firestore for persistent storage.
  */
 
-// Remove Firestore imports
-// import { collection, addDoc, getDocs, Timestamp, doc, getDoc, serverTimestamp, query, where, writeBatch, FirestoreError, updateDoc, setDoc } from 'firebase/firestore';
-// import { getDb } from '@/lib/firebase';
-import { auth, storage } from '@/lib/firebase'; // Keep Auth and Storage
+import { auth, storage } from '@/lib/firebase';
+import { getDb } from '@/lib/firebase-server';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  getDocs,
+  query,
+  where,
+  serverTimestamp,
+  Timestamp
+} from 'firebase/firestore';
 
 // Import types from schemas
 import {
@@ -19,21 +29,10 @@ import {
 } from '@/schemas/school';
 import type { User } from '@/schemas/user';
 
-// Import in-memory store functions
-import {
-    addSchoolToMemory,
-    getSchoolFromMemory,
-    getAllSchoolsFromMemory,
-    updateSchoolInMemory,
-    addUserToMemory, // For adding the admin user
-    getUserFromMemory,
-    updateUserInMemory,
-    setUserInMemory,
-    getUserByEmailFromMemory
-} from '@/lib/in-memory-db';
+// Re-export types for convenience
+export type { School, NewSchoolData, UpdateSchoolProfileData };
 
-console.warn('School Service: Using TEMPORARY In-Memory Database.');
-
+console.log('School Service: Using Firestore Database.');
 
 /**
  * Generates a simple license key.
@@ -44,22 +43,25 @@ function generateLicenseKey(): string {
   return `${prefix}-${randomPart}`;
 }
 
-
 /**
- * Asynchronously registers a new school using the in-memory store.
- * Creates the Firebase Auth user, then adds school and user profile to memory.
- * @param schoolData The data for the new school including name, adminEmail, and adminPassword.
- * @returns A promise that resolves to the registered School object.
- * @throws Error if registration fails (e.g., auth creation fails, email exists).
+ * Registers a new school using Firestore.
+ * Creates the Firebase Auth user, then adds school and user profile to Firestore.
  */
 export async function registerSchool(schoolData: NewSchoolData): Promise<School> {
-    // 1. Create Firebase Auth User (Remains the same)
+    const db = getDb();
+    
+    // 1. Check if email already exists in Firestore
+    const usersRef = collection(db, 'users');
+    const emailQuery = query(usersRef, where('email', '==', schoolData.adminEmail));
+    const existingUsers = await getDocs(emailQuery);
+    
+    if (!existingUsers.empty) {
+        throw new Error(`Registration failed: The email address ${schoolData.adminEmail} is already registered.`);
+    }
+    
+    // 2. Create Firebase Auth User
     let adminAuthUid: string;
     try {
-        // Check if email exists in memory first (basic check)
-        if (getUserByEmailFromMemory(schoolData.adminEmail)) {
-             throw new Error(`Registration failed: The email address ${schoolData.adminEmail} is already associated with a profile in the in-memory store.`);
-        }
         console.log(`Attempting to create Auth user for ${schoolData.adminEmail}...`);
         const userCredential = await createUserWithEmailAndPassword(auth, schoolData.adminEmail, schoolData.adminPassword);
         adminAuthUid = userCredential.user.uid;
@@ -75,14 +77,17 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
         console.error('Error creating Firebase Auth user:', error);
         if (error.code === 'auth/email-already-in-use') {
             throw new Error(`Authentication failed: The email address ${schoolData.adminEmail} is already in use by another account.`);
-        } // ... other auth errors
+        }
         throw new Error(`Failed to create admin authentication account: ${error.message}`);
     }
 
-    // --- Add School and User to In-Memory Store ---
+    // 3. Create School in Firestore
     try {
-        // 2. Prepare and Add School to Memory
-        const schoolToAdd: Omit<School, 'id' | 'createdAt' | 'updatedAt'> = {
+        const schoolsRef = collection(db, 'schools');
+        const newSchoolRef = doc(schoolsRef); // Generate a new ID
+        const schoolId = newSchoolRef.id;
+        
+        const schoolToAdd = {
             name: schoolData.name,
             licenseKey: generateLicenseKey(),
             adminEmail: schoolData.adminEmail,
@@ -91,80 +96,118 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
             phone: null,
             website: null,
             logoUrl: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
-        // addSchoolToMemory generates ID and timestamps
-        const newSchool = addSchoolToMemory(schoolToAdd);
+        
+        await setDoc(newSchoolRef, schoolToAdd);
+        console.log(`School ${schoolData.name} registered in Firestore with ID: ${schoolId}`);
 
-        // 3. Prepare and Add Admin User Profile to Memory
-        const adminProfileToAdd: Omit<User, 'createdAt' | 'updatedAt'> & { id: string } = {
-            id: adminAuthUid, // Use Auth UID as ID
+        // 4. Create Admin User Profile in Firestore
+        const adminProfileRef = doc(db, 'users', adminAuthUid);
+        const adminProfile = {
             name: `${schoolData.name} Admin`,
             email: schoolData.adminEmail,
             role: 'school_admin',
-            schoolId: newSchool.id,
-            schoolName: newSchool.name,
-            schoolLogoUrl: newSchool.logoUrl, // Initially null
+            schoolId: schoolId,
+            schoolName: schoolData.name,
+            schoolLogoUrl: null,
             class: null,
             parentContact: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
-        // addUserToMemory adds timestamps
-        addUserToMemory(adminProfileToAdd);
+        
+        await setDoc(adminProfileRef, adminProfile);
+        console.log(`Admin profile created in Firestore for ${schoolData.adminEmail} using Auth UID: ${adminAuthUid}`);
 
-        console.log(`School ${schoolData.name} registered in-memory with ID: ${newSchool.id}`);
-        console.log(`Admin profile created in-memory for ${schoolData.adminEmail} using Auth UID: ${adminAuthUid}`);
-
-        return newSchool; // Return the school data created in memory
+        // Return the created school
+        return {
+            id: schoolId,
+            ...schoolToAdd,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
 
     } catch (error: any) {
-        console.error('Error adding school/admin profile to in-memory store:', error);
-        // Attempt to clean up potentially created Auth user? Tricky.
-        console.error(`CRITICAL: Failed to add data to in-memory store for school ${schoolData.name}. Auth user ${adminAuthUid} may exist without linked profile/school.`);
-        throw new Error(`Failed to save school/profile data in memory. Please try again. ${error.message}`);
+        console.error('Error adding school/admin profile to Firestore:', error);
+        console.error(`CRITICAL: Failed to add data to Firestore for school ${schoolData.name}. Auth user ${adminAuthUid} may exist without linked profile/school.`);
+        throw new Error(`Failed to save school/profile data. Please try again. ${error.message}`);
     }
 }
 
-
 /**
- * Asynchronously retrieves all schools from the in-memory store.
- * @returns A promise that resolves to an array of School objects.
+ * Retrieves all schools from Firestore.
  */
 export async function getSchools(): Promise<School[]> {
   try {
-    // Simulate async operation if needed, otherwise just return
-    await Promise.resolve(); // Placeholder for potential async ops later
-    const schoolList = getAllSchoolsFromMemory();
-    return schoolList;
+    const db = getDb();
+    const schoolsRef = collection(db, 'schools');
+    const querySnapshot = await getDocs(schoolsRef);
+    
+    const schools: School[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      schools.push({
+        id: doc.id,
+        name: data.name,
+        licenseKey: data.licenseKey,
+        adminEmail: data.adminEmail,
+        adminUid: data.adminUid,
+        address: data.address || null,
+        phone: data.phone || null,
+        website: data.website || null,
+        logoUrl: data.logoUrl || null,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+      });
+    });
+    
+    console.log(`Fetched ${schools.length} schools from Firestore`);
+    return schools;
   }  catch (error: any) {
-    console.error('Error fetching schools from memory:', error);
+    console.error('Error fetching schools from Firestore:', error);
     return [];
   }
 }
 
-
 /**
- * Asynchronously retrieves a school by its ID from the in-memory store.
- * @param id The ID of the school to retrieve.
- * @returns A promise that resolves to a School object if found, or null if not found.
+ * Retrieves a school by its ID from Firestore.
  */
 export async function getSchoolById(id: string): Promise<School | null> {
- try {
-    await Promise.resolve(); // Placeholder
-    const school = getSchoolFromMemory(id);
-    return school;
+  try {
+    const db = getDb();
+    const schoolRef = doc(db, 'schools', id);
+    const schoolSnap = await getDoc(schoolRef);
+    
+    if (!schoolSnap.exists()) {
+      console.warn(`School with ID ${id} not found in Firestore`);
+      return null;
+    }
+    
+    const data = schoolSnap.data();
+    return {
+      id: schoolSnap.id,
+      name: data.name,
+      licenseKey: data.licenseKey,
+      adminEmail: data.adminEmail,
+      adminUid: data.adminUid,
+      address: data.address || null,
+      phone: data.phone || null,
+      website: data.website || null,
+      logoUrl: data.logoUrl || null,
+      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
+    };
   } catch (error: any) {
-    console.error(`Error fetching school with ID ${id} from memory:`, error);
+    console.error(`Error fetching school with ID ${id} from Firestore:`, error);
     return null;
   }
 }
 
 /**
- * Updates a school's profile information in the in-memory store and optionally uploads a new logo to Firebase Storage.
+ * Updates a school's profile information in Firestore and optionally uploads a new logo to Firebase Storage.
  * Only callable by the school's admin.
- * @param schoolId The ID of the school to update.
- * @param data The data to update (address, phone, website, name).
- * @param logoFile The new logo file to upload (optional).
- * @param currentAdminUid The UID of the admin performing the update.
- * @returns A promise that resolves to the updated School object.
  */
 export async function updateSchoolProfile(
   schoolId: string,
@@ -173,16 +216,22 @@ export async function updateSchoolProfile(
   currentAdminUid: string
 ): Promise<School> {
   try {
-    // 1. Verify Admin Permissions (Check in-memory store)
-    const existingSchoolData = getSchoolFromMemory(schoolId);
-    if (!existingSchoolData) {
-      throw new Error('School not found in memory.');
+    const db = getDb();
+    
+    // 1. Verify Admin Permissions (Check Firestore)
+    const schoolRef = doc(db, 'schools', schoolId);
+    const schoolSnap = await getDoc(schoolRef);
+    
+    if (!schoolSnap.exists()) {
+      throw new Error('School not found in Firestore.');
     }
+    
+    const existingSchoolData = schoolSnap.data();
     if (existingSchoolData.adminUid !== currentAdminUid) {
       throw new Error('Permission denied: Only the assigned admin can update this school.');
     }
 
-    const updateData: Partial<Omit<School, 'id' | 'createdAt' | 'updatedAt'>> = {};
+    const updateData: any = {};
     let needsUpdate = false;
 
     // Add provided fields to updateData if they exist and are defined
@@ -202,7 +251,6 @@ export async function updateSchoolProfile(
          updateData.name = data.name;
          needsUpdate = true;
     }
-
 
     // 2. Handle Logo Upload (if provided - Storage interaction remains)
     let newLogoUrl: string | null = existingSchoolData.logoUrl ?? null;
@@ -226,48 +274,47 @@ export async function updateSchoolProfile(
       // Upload the new logo
       const uploadResult = await uploadBytes(logoStorageRef, logoFile);
       newLogoUrl = await getDownloadURL(uploadResult.ref);
-      updateData.logoUrl = newLogoUrl; // Add the new URL to the memory update
+      updateData.logoUrl = newLogoUrl;
       needsUpdate = true;
       console.log(`Logo uploaded successfully for school ${schoolId}. URL: ${newLogoUrl}`);
-    } else if (updateData.hasOwnProperty('logoUrl') && updateData.logoUrl !== existingSchoolData.logoUrl) {
-        // Handle case where logoUrl might be explicitly set to null in `data` (though schema doesn't allow)
-        needsUpdate = true;
     }
 
-
-    // 3. Update In-Memory Store
-    let finalSchoolData: School | null = existingSchoolData; // Start with existing
+    // 3. Update Firestore
     if (needsUpdate) {
-        const updatedSchool = updateSchoolInMemory(schoolId, updateData);
-        if (!updatedSchool) {
-            // Should not happen if check at start passed, but handle defensively
-            throw new Error('Failed to update school in memory after initial check.');
-        }
-        finalSchoolData = updatedSchool;
-        console.log(`School profile updated successfully in-memory for ID: ${schoolId}`);
+        updateData.updatedAt = serverTimestamp();
+        await updateDoc(schoolRef, updateData);
+        console.log(`School profile updated successfully in Firestore for ID: ${schoolId}`);
 
-         // If school name or logo changed, update the admin's user profile in memory
-         if (updateData.name || updateData.logoUrl) {
-            const adminProfile = getUserFromMemory(currentAdminUid);
-            if (adminProfile) {
-                const userUpdates: Partial<User> = {};
+        // If school name or logo changed, update the admin's user profile in Firestore
+        if (updateData.name || updateData.hasOwnProperty('logoUrl')) {
+            const adminRef = doc(db, 'users', currentAdminUid);
+            const adminSnap = await getDoc(adminRef);
+            
+            if (adminSnap.exists()) {
+                const userUpdates: any = { updatedAt: serverTimestamp() };
                 if (updateData.name) userUpdates.schoolName = updateData.name;
-                if (updateData.hasOwnProperty('logoUrl')) userUpdates.schoolLogoUrl = updateData.logoUrl; // Update even if null
-                updateUserInMemory(currentAdminUid, userUpdates);
+                if (updateData.hasOwnProperty('logoUrl')) userUpdates.schoolLogoUrl = updateData.logoUrl;
+                
+                await updateDoc(adminRef, userUpdates);
+                console.log(`Updated admin profile for ${currentAdminUid} with new school info`);
             }
-         }
-
+        }
     } else {
-        console.log(`No changes detected for school profile ${schoolId}. Skipping in-memory update.`);
+        console.log(`No changes detected for school profile ${schoolId}. Skipping Firestore update.`);
     }
 
-    return finalSchoolData!; // Return the final state
+    // Return the updated school
+    const updatedSchool = await getSchoolById(schoolId);
+    if (!updatedSchool) {
+        throw new Error('Failed to retrieve updated school');
+    }
+    return updatedSchool;
 
   } catch (error: any) {
     console.error(`Error updating school profile for ID ${schoolId}:`, error);
-     if (error.code?.startsWith('storage/')) { // Handle storage errors
+    if (error.code?.startsWith('storage/')) {
         throw new Error(`Failed to update school logo: ${error.message}`);
-     }
+    }
     throw new Error(`Failed to update school profile: ${error.message}`);
   }
 }
