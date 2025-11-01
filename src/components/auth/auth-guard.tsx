@@ -20,10 +20,15 @@ export function AuthGuard({ children }: { children: ReactNode }) {
         console.log("[AuthGuard] Redirecting to login - no user");
         router.replace('/login');
       }
-      // User authenticated but still on login page - redirect to dashboard
+      // User authenticated but still on login page - redirect based on role
       else if (currentUser && pathname === '/login') {
-        console.log("[AuthGuard] Redirecting to dashboard - user already logged in");
-        router.replace('/dashboard');
+        if (currentUser.role === 'superadmin') {
+          console.log("[AuthGuard] Redirecting superadmin to super-admin dashboard");
+          router.replace('/super-admin');
+        } else {
+          console.log("[AuthGuard] Redirecting to dashboard - user already logged in");
+          router.replace('/dashboard');
+        }
       }
     }
   }, [currentUser, loading, router, pathname]);

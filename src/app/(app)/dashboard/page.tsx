@@ -86,6 +86,12 @@ export default function HomePage() {
     const loadOrganization = async () => {
       if (!currentUser || authLoading) return;
 
+      // Skip organization loading for superadmins
+      if (currentUser.role === 'superadmin') {
+        setOrganizationLoading(false);
+        return;
+      }
+
       try {
         setOrganizationLoading(true);
         let orgId = orgIdFromUrl;

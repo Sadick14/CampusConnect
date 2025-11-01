@@ -22,8 +22,13 @@ export default function LoginPage() {
     console.log('[LoginPage] currentUser:', currentUser?.email, 'loading:', loading);
     
     if (!loading && currentUser) {
-      console.log('[LoginPage] User is logged in, redirecting to organizations...');
-      router.replace('/organizations');
+      if (currentUser.role === 'superadmin') {
+        console.log('[LoginPage] Super admin detected, redirecting to super-admin dashboard...');
+        router.replace('/super-admin');
+      } else {
+        console.log('[LoginPage] User is logged in, redirecting to organizations...');
+        router.replace('/organizations');
+      }
     }
   }, [currentUser, loading, router]);
 
