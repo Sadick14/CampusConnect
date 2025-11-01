@@ -1,3 +1,4 @@
+
 {
   "indexes": [
     {
@@ -90,7 +91,7 @@
       "collectionGroup": "staff",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "schoolId", "order": "ASCENDING" },
+        { "fieldPath": "organizationId", "order": "ASCENDING" },
         { "fieldPath": "name", "order": "ASCENDING" }
       ]
     },
