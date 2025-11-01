@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Home, ArrowLeft, Search, BookOpen } from 'lucide-react';
+import { Home, ArrowLeft, Search } from 'lucide-react';
 
 export default function NotFound() {
   const router = useRouter();
@@ -19,98 +19,86 @@ export default function NotFound() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
-      <div className="max-w-2xl mx-auto text-center">
-        {/* Animated 404 */}
-        <div className="relative mb-8">
-          <div className="text-8xl md:text-9xl font-bold text-transparent bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text animate-pulse">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center px-4">
+      <div className="max-w-2xl w-full text-center space-y-8">
+        <div className="relative">
+          <h1 className="text-[150px] md:text-[220px] font-black text-green-100 dark:text-green-900/30 leading-none select-none">
             404
-          </div>
-          
-          {/* Floating Elements */}
-          <div className="absolute -top-4 -left-4 w-8 h-8 bg-blue-400 rounded-full animate-bounce"></div>
-          <div className="absolute top-8 -right-8 w-6 h-6 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.5s' }}></div>
-          <div className="absolute -bottom-2 left-1/4 w-4 h-4 bg-pink-400 rounded-full animate-bounce" style={{ animationDelay: '1s' }}></div>
-          
-          {/* Search icon with animation */}
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <Search className="h-16 w-16 text-gray-300 animate-spin" style={{ animationDuration: '3s' }} />
-          </div>
-        </div>
-
-        {/* Message */}
-        <div className="mb-8 space-y-4">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800 animate-fade-in">
-            Oops! Page Not Found
           </h1>
-          <p className="text-gray-600 text-lg animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            The page you're looking for seems to have wandered off into the digital void.
-          </p>
-          <p className="text-gray-500 animate-fade-in" style={{ animationDelay: '0.4s' }}>
-            Don't worry, even the best explorers sometimes take a wrong turn!
-          </p>
-        </div>
-
-        {/* Animated Campus Icon */}
-        <div className="mb-8 flex justify-center">
-          <div className="relative">
-            <BookOpen className="h-24 w-24 text-blue-400 animate-float" />
-            <div className="absolute -inset-4 border-2 border-blue-200 rounded-full animate-ping"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="space-y-4 animate-fadeInUp">
+              <div className="w-24 h-24 mx-auto bg-gradient-to-br from-green-400 to-emerald-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-green-500/50 animate-float">
+                <Search className="w-12 h-12 text-white" />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{ animationDelay: '0.6s' }}>
-          <Button 
-            onClick={() => router.back()} 
-            variant="outline" 
-            size="lg"
-            className="min-w-[160px] group hover:scale-105 transition-transform"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2 group-hover:-translate-x-1 transition-transform" />
-            Go Back
-          </Button>
-          
-          <Link href="/organizations">
-            <Button 
-              size="lg" 
-              className="min-w-[160px] bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 group hover:scale-105 transition-transform"
+        <div className="space-y-6 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+          <div className="space-y-3">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white">
+              Page Not Found
+            </h2>
+            <p className="text-lg md:text-xl text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+              Oops! The page you're looking for seems to have wandered off. 
+              Let's get you back on track.
+            </p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700 max-w-md mx-auto">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+              Here are some helpful links:
+            </p>
+            <ul className="space-y-2 text-left">
+              <li className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Check the URL for typos
+              </li>
+              <li className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Return to the homepage
+              </li>
+              <li className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Contact support if the problem persists
+              </li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
+            <Button
+              asChild
+              size="lg"
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 transition-all duration-300 rounded-xl text-base px-8"
             >
-              <Home className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform" />
-              Go Home
+              <Link href="/" className="flex items-center gap-2">
+                <Home className="w-5 h-5" />
+                Go to Homepage
+              </Link>
             </Button>
+            
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => router.back()}
+              className="border-2 border-gray-300 dark:border-gray-600 hover:border-green-500 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-950/30 rounded-xl text-base px-8"
+            >
+              <ArrowLeft className="w-5 h-5 mr-2" />
+              Go Back
+            </Button>
+          </div>
+        </div>
+
+        <p className="text-sm text-gray-500 dark:text-gray-500 animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
+          Need assistance?{' '}
+          <Link href="/contact" className="text-green-600 dark:text-green-400 hover:underline font-medium">
+            Contact our support team
           </Link>
-        </div>
-
-        {/* Fun Facts */}
-        <div className="mt-12 p-6 bg-white/50 backdrop-blur-sm rounded-2xl border border-white/20 animate-fade-in" style={{ animationDelay: '0.8s' }}>
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">Fun Fact!</h3>
-          <p className="text-gray-600 text-sm">
-            404 errors got their name from room 404 at CERN, where the web was invented. 
-            The room housed the main database, and when it was unavailable, users got a "404" error.
-          </p>
-        </div>
-
-        {/* Contact Help */}
-        <div className="mt-8 text-center animate-fade-in" style={{ animationDelay: '1s' }}>
-          <p className="text-gray-500 text-sm">
-            Still lost? 
-            <Link href="/organizations" className="text-blue-500 hover:text-blue-600 ml-1 underline">
-              Return to your organizations
-            </Link>
-          </p>
-        </div>
-      </div>
-
-      {/* Background Pattern */}
-      <div className="fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute top-40 left-40 w-80 h-80 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+        </p>
       </div>
 
       <style jsx>{`
-        @keyframes fade-in {
+        @keyframes fadeInUp {
           from {
             opacity: 0;
             transform: translateY(20px);
@@ -120,47 +108,22 @@ export default function NotFound() {
             transform: translateY(0);
           }
         }
-
+        
         @keyframes float {
           0%, 100% {
             transform: translateY(0px);
           }
           50% {
-            transform: translateY(-20px);
+            transform: translateY(-10px);
           }
         }
 
-        @keyframes blob {
-          0%, 100% {
-            transform: translate(0px, 0px) scale(1);
-          }
-          33% {
-            transform: translate(30px, -50px) scale(1.1);
-          }
-          66% {
-            transform: translate(-20px, 20px) scale(0.9);
-          }
-        }
-
-        .animate-fade-in {
-          animation: fade-in 0.6s ease-out forwards;
-          opacity: 0;
+        .animate-fadeInUp {
+          animation: fadeInUp 0.6s ease-out forwards;
         }
 
         .animate-float {
           animation: float 3s ease-in-out infinite;
-        }
-
-        .animate-blob {
-          animation: blob 7s infinite;
-        }
-
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-
-        .animation-delay-4000 {
-          animation-delay: 4s;
         }
       `}</style>
     </div>

@@ -1,6 +1,6 @@
-# CampusConnect Pro 🎓
+# Syntra 🎓
 
-A comprehensive school management system built with Next.js, Firebase, and AI-powered reporting. CampusConnect Pro helps educational institutions manage students, staff, attendance, grades, fees, and more—all in one modern, responsive platform.
+A comprehensive school management system built with Next.js, Firebase, and AI-powered reporting. Syntra helps educational institutions manage students, staff, attendance, grades, fees, and more—all in one modern, responsive platform.
 
 ## ✨ Features
 

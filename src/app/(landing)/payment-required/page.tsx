@@ -277,7 +277,7 @@ export default function PaymentRequiredPage() {
 
         {/* Support */}
         <div className="text-center mt-8 text-sm text-gray-500">
-          Need help? Contact our support team at support@campusconnect.com
+          Need help? Contact our support team at support@syntra.app
         </div>
       </div>
     </div>

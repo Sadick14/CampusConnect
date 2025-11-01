@@ -84,7 +84,7 @@ export function TrialExpiryBanner() {
         <AlertDescription className="flex items-center justify-between">
           <span>
             <strong>Trial Expired!</strong> Your free trial has ended. 
-            Please subscribe to continue using CampusConnect.
+            Please subscribe to continue using Syntra.
           </span>
           <Button 
             onClick={() => router.push('/schools/payment')}
@@ -180,7 +180,7 @@ export function TrialExpiryBanner() {
           <Check className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-800">
             <strong>Subscription Active!</strong> Your payment has been approved. 
-            Thank you for using CampusConnect.
+            Thank you for using Syntra.
           </AlertDescription>
         </Alert>
       );

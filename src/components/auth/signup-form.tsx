@@ -263,7 +263,7 @@ export function SignupForm() {
           Create Your Account
         </CardTitle>
         <CardDescription className="text-muted-foreground">
-          Get started with CampusConnect Pro
+          Get started with Syntra
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6 pb-6">

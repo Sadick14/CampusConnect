@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from "@/components/common/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -206,7 +207,7 @@ export default function HomePage() {
       }
       return message;
     }
-    return "Welcome to CampusConnect Pro!";
+    return "Welcome to Syntra!";
   };  const filteredDashboardItems = dashboardItems.filter(item => {
     if (!currentUser || !item.roles) return true;
     if (!currentUser.role) return false;
@@ -221,11 +222,16 @@ export default function HomePage() {
 
   if (authLoading || organizationLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-          <p className="text-gray-600">
-            {authLoading ? 'Loading user...' : 'Loading organization...'}
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <div className="text-center animate-fade-in-up">
+          <div className="relative mb-6">
+            <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl">
+              <Loader2 className="h-8 w-8 animate-spin text-white" />
+            </div>
+            <div className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-blue-500/20 to-purple-600/20 blur-xl"></div>
+          </div>
+          <p className="text-gray-600 font-medium">
+            {authLoading ? 'Loading your profile...' : 'Loading organization...'}
           </p>
         </div>
       </div>
@@ -251,64 +257,75 @@ export default function HomePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-fade-in-up">
       {/* Organization Header */}
       {currentOrganization && (
-        <Card className="border-l-4 border-l-blue-500 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Building2 className="h-6 w-6 text-blue-600" />
-                <div>
-                  <CardTitle className="text-xl text-blue-900">{currentOrganization.name}</CardTitle>
-                  <CardDescription className="capitalize text-blue-700">
-                    {currentOrganization.type} • {currentOrganization.memberCount} members
-                  </CardDescription>
-                </div>
+        <div className="card-modern rounded-3xl p-6 bg-gradient-to-r from-green-50/80 via-emerald-50/80 to-green-50/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-600 to-emerald-600 flex items-center justify-center shadow-xl">
+                <Building2 className="h-8 w-8 text-white" />
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={currentOrganization.subscriptionStatus === 'trial' ? 'secondary' : 
-                               currentOrganization.subscriptionStatus === 'active' ? 'default' : 'destructive'}>
-                  {currentOrganization.subscriptionStatus === 'trial' 
-                    ? `Trial (${currentOrganization.daysRemaining} days left)`
-                    : currentOrganization.subscriptionStatus === 'active'
-                    ? 'Active Subscription'
-                    : currentOrganization.subscriptionStatus === 'pending_payment'
-                    ? 'Payment Required'
-                    : currentOrganization.subscriptionStatus}
-                </Badge>
-                <Link href="/organizations">
-                  <Badge variant="outline" className="cursor-pointer hover:bg-gray-100">
-                    Switch Organization
-                  </Badge>
-                </Link>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                  {currentOrganization.name}
+                </h1>
+                <p className="text-gray-600 capitalize font-medium">
+                  {currentOrganization.type} • {currentOrganization.memberCount} members
+                </p>
               </div>
             </div>
-          </CardHeader>
-        </Card>
+            <div className="flex items-center gap-3">
+              <Badge variant={currentOrganization.subscriptionStatus === 'trial' ? 'secondary' :
+                             currentOrganization.subscriptionStatus === 'active' ? 'default' : 'destructive'}
+                     className="px-4 py-2 text-sm font-semibold rounded-xl">
+                {currentOrganization.subscriptionStatus === 'trial'
+                  ? `Trial (${currentOrganization.daysRemaining} days left)`
+                  : currentOrganization.subscriptionStatus === 'active'
+                  ? 'Active Subscription'
+                  : currentOrganization.subscriptionStatus === 'pending_payment'
+                  ? 'Payment Required'
+                  : currentOrganization.subscriptionStatus}
+              </Badge>
+              <Link href="/organizations">
+                <Button variant="outline" className="rounded-xl border-2 hover:bg-gray-50 transition-colors font-semibold">
+                  <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Switch Organization
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
-      
-      <PageHeader 
-        title="Dashboard" 
+
+      <PageHeader
+        title="Dashboard"
         description={welcomeMessage()}
       />
 
       {/* Top Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Students Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <GraduationCap className="h-4 w-4 text-blue-500" />
+        <Card className="card-modern rounded-2xl overflow-hidden group hover:scale-105 transition-transform duration-300">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 pt-6 px-6">
+            <CardTitle className="text-sm font-semibold text-gray-700">Total Students</CardTitle>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
+              <Users className="h-5 w-5 text-white" />
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-6 pb-6">
             {statsLoading ? (
-              <Skeleton className="h-8 w-20" />
+              <div className="space-y-2">
+                <div className="h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+              </div>
             ) : (
               <>
-                <p className="text-2xl font-bold">{dashboardStats?.totalStudents || 0}</p>
-                <p className="text-xs text-green-600 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
+                <p className="text-3xl font-bold text-gray-900 mb-1">{dashboardStats?.totalStudents || 0}</p>
+                <p className="text-sm text-green-600 flex items-center gap-1 font-medium">
+                  <TrendingUp className="h-4 w-4" />
                   {dashboardStats?.activeStudents || 0} active
                 </p>
               </>
@@ -317,54 +334,69 @@ export default function HomePage() {
         </Card>
 
         {/* Staff Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Staff</CardTitle>
-            <Briefcase className="h-4 w-4 text-purple-500" />
+        <Card className="card-modern rounded-2xl overflow-hidden group hover:scale-105 transition-transform duration-300">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 pt-6 px-6">
+            <CardTitle className="text-sm font-semibold text-gray-700">Total Staff</CardTitle>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg">
+              <Briefcase className="h-5 w-5 text-white" />
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-6 pb-6">
             {statsLoading ? (
-              <Skeleton className="h-8 w-20" />
+              <div className="space-y-2">
+                <div className="h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+              </div>
             ) : (
               <>
-                <p className="text-2xl font-bold">{dashboardStats?.totalStaff || 0}</p>
-                <p className="text-xs text-gray-600">Teaching & Non-teaching</p>
+                <p className="text-3xl font-bold text-gray-900 mb-1">{dashboardStats?.totalStaff || 0}</p>
+                <p className="text-sm text-gray-600 font-medium">Teaching & Non-teaching</p>
               </>
             )}
           </CardContent>
         </Card>
 
         {/* Classes Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Classes</CardTitle>
-            <BookOpen className="h-4 w-4 text-green-500" />
+        <Card className="card-modern rounded-2xl overflow-hidden group hover:scale-105 transition-transform duration-300">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 pt-6 px-6">
+            <CardTitle className="text-sm font-semibold text-gray-700">Total Classes</CardTitle>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center shadow-lg">
+              <BookOpen className="h-5 w-5 text-white" />
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-6 pb-6">
             {statsLoading ? (
-              <Skeleton className="h-8 w-20" />
+              <div className="space-y-2">
+                <div className="h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+              </div>
             ) : (
               <>
-                <p className="text-2xl font-bold">{dashboardStats?.totalClasses || 0}</p>
-                <p className="text-xs text-gray-600">Active classes</p>
+                <p className="text-3xl font-bold text-gray-900 mb-1">{dashboardStats?.totalClasses || 0}</p>
+                <p className="text-sm text-gray-600 font-medium">Active classes</p>
               </>
             )}
           </CardContent>
         </Card>
 
         {/* Attendance Rate Card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Attendance Rate</CardTitle>
-            <Activity className="h-4 w-4 text-orange-500" />
+        <Card className="card-modern rounded-2xl overflow-hidden group hover:scale-105 transition-transform duration-300">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 pt-6 px-6">
+            <CardTitle className="text-sm font-semibold text-gray-700">Attendance Rate</CardTitle>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg">
+              <Activity className="h-5 w-5 text-white" />
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-6 pb-6">
             {statsLoading ? (
-              <Skeleton className="h-8 w-20" />
+              <div className="space-y-2">
+                <div className="h-8 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+              </div>
             ) : (
               <>
-                <p className="text-2xl font-bold">{dashboardStats?.attendanceRate || 0}%</p>
-                <p className="text-xs text-gray-600">Today's attendance</p>
+                <p className="text-3xl font-bold text-gray-900 mb-1">{dashboardStats?.attendanceRate || 0}%</p>
+                <p className="text-sm text-gray-600 font-medium">Today's attendance</p>
               </>
             )}
           </CardContent>
@@ -534,29 +566,34 @@ export default function HomePage() {
       </div>
 
       {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Navigate to key sections</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {filteredDashboardItems.map((item) => (
-              <Link href={item.href} key={item.title} passHref>
-                <Card className="cursor-pointer hover:shadow-lg transition-all hover:border-primary/50">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">{item.title}</CardTitle>
-                    <item.icon className="h-4 w-4 text-primary" />
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="card-modern rounded-3xl p-8">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Quick Actions</h2>
+          <p className="text-gray-600">Navigate to key sections of your organization</p>
+        </div>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {filteredDashboardItems.map((item, index) => (
+            <Link href={item.href} key={item.title} className="group">
+              <div className="card-modern rounded-2xl p-6 cursor-pointer hover:scale-105 transition-all duration-300 animate-fade-in-up"
+                   style={{ animationDelay: `${index * 50}ms` }}>
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow duration-300">
+                    <item.icon className="h-7 w-7 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 group-hover:text-green-600 transition-colors mb-1">
+                      {item.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

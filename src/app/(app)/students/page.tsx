@@ -201,44 +201,48 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-start">
-        <PageHeader
-          title="Students"
-          description="Manage and view all students in your school"
-        />
-        <Link href={currentOrgId ? `/students/register?org=${currentOrgId}` : '/students/register'}>
-          <Button>
-            <UserPlus className="mr-2 h-4 w-4" />
-            Register New Student
-          </Button>
-        </Link>
+    <div className="space-y-8 animate-fade-in">
+      {/* Modern Header */}
+      <div className="card-modern rounded-3xl p-8">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Students</h1>
+            <p className="text-gray-600 text-lg">Manage and view all students in your school</p>
+          </div>
+          <Link href={currentOrgId ? `/students/register?org=${currentOrgId}` : '/students/register'}>
+            <Button className="btn-modern rounded-2xl px-6 py-3 font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+              <UserPlus className="mr-2 h-5 w-5" />
+              Register New Student
+            </Button>
+          </Link>
+        </div>
       </div>
 
-      {/* Filters Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-4 w-4" />
+      {/* Modern Filters Card */}
+      <div className="card-modern rounded-3xl p-8">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+            <Filter className="h-6 w-6 text-green-600" />
             Filters & Search
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          </h2>
+          <p className="text-gray-600">Find and filter students by various criteria</p>
+        </div>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-500" />
               <Input
                 placeholder="Search by name, ID, or admission number..."
                 value={searchTerm}
                 onChange={e => handleSearch(e.target.value)}
-                className="pl-10"
+                className="input-modern rounded-2xl pl-12 h-12 text-base"
               />
             </div>
 
             {/* Status Filter */}
             <Select value={selectedStatus} onValueChange={handleStatusChange}>
-              <SelectTrigger>
+              <SelectTrigger className="input-modern rounded-2xl h-12 text-base">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
@@ -252,7 +256,7 @@ export default function StudentsPage() {
 
             {/* Class Filter */}
             <Select value={selectedClass} onValueChange={handleClassChange}>
-              <SelectTrigger>
+              <SelectTrigger className="input-modern rounded-2xl h-12 text-base">
                 <SelectValue placeholder="Filter by class" />
               </SelectTrigger>
               <SelectContent>
@@ -266,26 +270,35 @@ export default function StudentsPage() {
             </Select>
           </div>
 
-          <div className="text-sm text-gray-600">
-            Showing <span className="font-semibold">{filteredStudents.length}</span> of{' '}
-            <span className="font-semibold">{students.length}</span> students
+          <div className="text-sm text-gray-600 bg-gray-50 rounded-2xl px-4 py-3">
+            <span className="font-semibold text-lg text-gray-900">{filteredStudents.length}</span> of{' '}
+            <span className="font-semibold text-lg text-gray-900">{students.length}</span> students
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Students Table */}
-      <Card>
-        <CardContent className="pt-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin" />
+      <div className="card-modern rounded-3xl p-8">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Student Directory</h2>
+          <p className="text-gray-600">Complete list of all students with their details</p>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-green-600" />
+              <p className="text-gray-600">Loading students...</p>
             </div>
+          </div>
           ) : filteredStudents.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center">
-              <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-600">No students found matching your criteria</p>
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center mb-6">
+                <AlertCircle className="h-10 w-10 text-gray-400" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No students found</h3>
+              <p className="text-gray-600 mb-6">No students match your current filters</p>
               <Link href="/students/register">
-                <Button className="mt-4" variant="outline">
+                <Button className="btn-modern rounded-2xl px-6 py-3 font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
                   Register First Student
                 </Button>
               </Link>
@@ -294,26 +307,26 @@ export default function StudentsPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead>ID Number</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Enrollment Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                  <TableRow className="border-gray-200 hover:bg-gray-50">
+                    <TableHead className="text-gray-900 font-bold text-base">Student Name</TableHead>
+                    <TableHead className="text-gray-900 font-bold text-base">ID Number</TableHead>
+                    <TableHead className="text-gray-900 font-bold text-base">Class</TableHead>
+                    <TableHead className="text-gray-900 font-bold text-base">Email</TableHead>
+                    <TableHead className="text-gray-900 font-bold text-base">Status</TableHead>
+                    <TableHead className="text-gray-900 font-bold text-base">Enrollment Date</TableHead>
+                    <TableHead className="text-right text-gray-900 font-bold text-base">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredStudents.map(student => (
-                    <TableRow key={student.id} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">
+                    <TableRow key={student.id} className="hover:bg-gray-50 border-gray-200">
+                      <TableCell className="font-semibold text-gray-900">
                         {student.firstName} {student.lastName}
                       </TableCell>
-                      <TableCell className="font-mono text-sm">
+                      <TableCell className="font-mono text-sm text-gray-700">
                         {student.studentIdNumber}
                       </TableCell>
-                      <TableCell>{student.currentClass}</TableCell>
+                      <TableCell className="text-gray-700">{student.currentClass}</TableCell>
                       <TableCell className="text-sm">{student.email || '-'}</TableCell>
                       <TableCell>
                         <Badge
@@ -336,19 +349,19 @@ export default function StudentsPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Link href={`/students/${student.id}`}>
-                            <Button size="sm" variant="ghost" title="View">
+                            <Button size="sm" variant="ghost" className="rounded-xl hover:bg-green-50 hover:text-green-600 transition-colors" title="View">
                               <Eye className="h-4 w-4" />
                             </Button>
                           </Link>
                           <Link href={`/students/${student.id}/edit`}>
-                            <Button size="sm" variant="ghost" title="Edit">
+                            <Button size="sm" variant="ghost" className="rounded-xl hover:bg-emerald-50 hover:text-emerald-600 transition-colors" title="Edit">
                               <Edit className="h-4 w-4" />
                             </Button>
                           </Link>
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-red-600 hover:text-red-700"
+                            className="rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
                             title="Delete"
                             onClick={() => {
                               setSelectedStudentId(student.id);
@@ -365,24 +378,23 @@ export default function StudentsPage() {
               </Table>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-3xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Student</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-2xl font-bold">Delete Student</AlertDialogTitle>
+            <AlertDialogDescription className="text-base text-gray-600">
               Are you sure you want to delete this student? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex justify-end gap-4">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-2xl">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className="rounded-2xl bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? (
                 <>
@@ -398,43 +410,42 @@ export default function StudentsPage() {
       </AlertDialog>
 
       {/* Statistics Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Student Statistics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Total Students</p>
-              <p className="text-2xl font-bold">{students.length}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Active</p>
-              <p className="text-2xl font-bold text-green-600">
-                {students.filter(s => s.status === 'active').length}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Inactive</p>
-              <p className="text-2xl font-bold text-yellow-600">
-                {students.filter(s => s.status === 'inactive').length}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Graduated</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {students.filter(s => s.status === 'graduated').length}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Classes</p>
-              <p className="text-2xl font-bold text-purple-600">
-                {classes.length}
-              </p>
-            </div>
+      <div className="card-modern rounded-3xl p-8">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Student Statistics</h2>
+          <p className="text-gray-600">Overview of student distribution and status</p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+          <div className="text-center p-4 rounded-2xl bg-gradient-to-br from-green-50 to-emerald-100 border border-green-200">
+            <p className="text-sm text-green-700 font-semibold mb-2">Total Students</p>
+            <p className="text-4xl font-bold text-green-900">{students.length}</p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="text-center p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-100 border border-emerald-200">
+            <p className="text-sm text-emerald-700 font-semibold mb-2">Active</p>
+            <p className="text-4xl font-bold text-emerald-900">
+              {students.filter(s => s.status === 'active').length}
+            </p>
+          </div>
+          <div className="text-center p-4 rounded-2xl bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200">
+            <p className="text-sm text-yellow-700 font-semibold mb-2">Inactive</p>
+            <p className="text-4xl font-bold text-yellow-900">
+              {students.filter(s => s.status === 'inactive').length}
+            </p>
+          </div>
+          <div className="text-center p-4 rounded-2xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200">
+            <p className="text-sm text-indigo-700 font-semibold mb-2">Graduated</p>
+            <p className="text-4xl font-bold text-indigo-900">
+              {students.filter(s => s.status === 'graduated').length}
+            </p>
+          </div>
+          <div className="text-center p-4 rounded-2xl bg-gradient-to-br from-teal-50 to-cyan-100 border border-teal-200">
+            <p className="text-sm text-teal-700 font-semibold mb-2">Classes</p>
+            <p className="text-4xl font-bold text-teal-900">
+              {classes.length}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

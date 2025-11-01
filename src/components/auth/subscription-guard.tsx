@@ -124,7 +124,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
           <CardContent className="space-y-4">
             <Alert variant="destructive">
               <AlertDescription>
-                Please contact support at support@campusconnect.com or try again later.
+                Please contact support at support@syntra.app or try again later.
               </AlertDescription>
             </Alert>
             <div className="flex gap-2">
@@ -170,7 +170,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
               <AlertDescription>
                 {subscription.rejectionReason 
                   ? `Payment Rejected: ${subscription.rejectionReason}` 
-                  : 'Your trial period has ended. Please make payment to continue using CampusConnect.'}
+                  : 'Your trial period has ended. Please make payment to continue using Syntra.'}
               </AlertDescription>
             </Alert>
             

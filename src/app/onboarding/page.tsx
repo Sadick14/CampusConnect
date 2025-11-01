@@ -317,7 +317,7 @@ function OnboardingContent() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            Welcome to CampusConnect
+            Welcome to Syntra
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-300">
             Let's set up your school in just a few steps
@@ -665,7 +665,7 @@ function OnboardingContent() {
 
         {/* Footer */}
         <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-8">
-          Need help? Contact support at support@campusconnect.app
+          Need help? Contact support at support@syntra.app
         </p>
       </div>
     </div>

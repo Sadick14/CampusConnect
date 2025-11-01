@@ -73,14 +73,8 @@ import { RevenueCharts } from '@/components/super-admin/revenue-charts';
 import { SchoolActivityTable } from '@/components/super-admin/school-activity-table';
 
 // Super Admin Services
-import {
-  getSystemStats,
-  getRevenueMetrics,
-  getSchoolActivities,
-  type SystemStats,
-  type RevenueMetrics,
-  type SchoolActivity,
-} from '@/services/super-admin-stats';
+import type { SystemStats, RevenueMetrics, SchoolActivity } from '@/services/super-admin-stats';
+import useSuperAdminStats from '@/hooks/use-super-admin-stats';
 
 export default function SuperAdminDashboard() {
   const { currentUser } = useAuth();
@@ -101,6 +95,14 @@ export default function SuperAdminDashboard() {
   const [revenueMetrics, setRevenueMetrics] = useState<RevenueMetrics | null>(null);
   const [schoolActivities, setSchoolActivities] = useState<SchoolActivity[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
+
+  // Realtime hook for live analytics
+  const {
+    systemStats: liveSystemStats,
+    revenueMetrics: liveRevenueMetrics,
+    schoolActivities: liveSchoolActivities,
+    loading: liveLoading,
+  } = useSuperAdminStats();
 
   // Form state for new invitation
   const [schoolName, setSchoolName] = useState('');
@@ -134,29 +136,20 @@ export default function SuperAdminDashboard() {
       setLoading(true);
       setStatsLoading(true);
       try {
-        // Load all data in parallel
+        // Load non-analytics data in parallel (analytics come from realtime hook)
         const [
-          schoolsData, 
-          invitesData, 
+          schoolsData,
+          invitesData,
           paymentsData,
-          statsData,
-          revenueData,
-          activitiesData,
         ] = await Promise.all([
           getSchools(),
           getAllInvitations(),
           getPendingPayments(),
-          getSystemStats(),
-          getRevenueMetrics(),
-          getSchoolActivities(),
         ]);
 
         setSchools(schoolsData);
         setInvitations(invitesData);
         setPendingPayments(paymentsData);
-        setSystemStats(statsData);
-        setRevenueMetrics(revenueData);
-        setSchoolActivities(activitiesData);
       } catch (error: any) {
         console.error(error);
         toast({
@@ -172,6 +165,14 @@ export default function SuperAdminDashboard() {
 
     loadData();
   }, [currentUser, toast]);
+
+  // Sync realtime analytics into local component state so existing components keep working
+  useEffect(() => {
+    if (liveSystemStats) setSystemStats(liveSystemStats);
+    if (liveRevenueMetrics) setRevenueMetrics(liveRevenueMetrics);
+    if (liveSchoolActivities) setSchoolActivities(liveSchoolActivities);
+    setStatsLoading(liveLoading);
+  }, [liveSystemStats, liveRevenueMetrics, liveSchoolActivities, liveLoading]);
 
   const handleCreateInvitation = async () => {
     if (!currentUser || !schoolName || !schoolEmail || !adminName || !adminEmail) {
@@ -330,7 +331,7 @@ export default function SuperAdminDashboard() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Super Admin Dashboard"
+        title="Syntra Admin Dashboard"
         description="Comprehensive platform management and analytics"
         actions={
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>

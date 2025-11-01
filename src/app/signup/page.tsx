@@ -24,7 +24,7 @@ export default function SignupPage() {
             </svg>
           </div>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">
-            Join CampusConnect
+            Join Syntra
           </h1>
           <p className="mt-2 text-muted-foreground">
             Create your account to get started

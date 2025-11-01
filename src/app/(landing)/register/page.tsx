@@ -43,13 +43,13 @@ export default function SelfRegisterSchoolPage() {
       const newSchool: School = await registerSchool(values);
       
       toast({
-        title: "🎉 Welcome to CampusConnect!",
+        title: "🎉 Welcome to Syntra!",
         description: (
           <div className="space-y-2">
             <p><strong>{newSchool.name}</strong> has been successfully registered!</p>
             <p>✅ Your admin account is ready</p>
             <p>📅 Free trial: <strong className="text-green-600">{newSchool.daysRemaining} days remaining</strong></p>
-            <p className="text-xs text-muted-foreground">You can start using CampusConnect immediately!</p>
+            <p className="text-xs text-muted-foreground">You can start using Syntra immediately!</p>
           </div>
         ),
         duration: 8000,
@@ -78,7 +78,7 @@ export default function SelfRegisterSchoolPage() {
           <div className="mx-auto w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
             <SchoolIcon className="h-6 w-6 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Join CampusConnect</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Join Syntra</h1>
           <p className="text-gray-600 mt-2">Start managing your school today with a free 14-day trial</p>
         </div>
 
