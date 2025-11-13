@@ -94,7 +94,7 @@ export function RevenueCharts({ data, loading }: RevenueChartsProps) {
           <div className="space-y-3">
             {data.bySchool.slice(0, 10).map((school, index) => (
               <div 
-                key={school.schoolId} 
+                key={school.organizationId} 
                 className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors"
               >
                 <div className="flex items-center gap-3">

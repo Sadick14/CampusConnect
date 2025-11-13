@@ -86,21 +86,21 @@ export default function SchoolPaymentPage() {
 
   useEffect(() => {
     async function loadData() {
-      if (!currentUser?.schoolId) {
+      if (!currentUser?.currentOrganizationId) {
         setLoading(false);
         return;
       }
 
       try {
         // Update subscription status first
-        await updateSubscriptionStatus(currentUser.schoolId);
+        await updateSubscriptionStatus(currentUser.currentOrganizationId);
 
         // Load subscription
-        const sub = await getSubscription(currentUser.schoolId);
+        const sub = await getSubscription(currentUser.currentOrganizationId);
         setSubscription(sub);
 
         // Load payment history
-        const paymentHistory = await getSchoolPayments(currentUser.schoolId);
+        const paymentHistory = await getSchoolPayments(currentUser.currentOrganizationId);
         setPayments(paymentHistory);
       } catch (error) {
         console.error('Error loading subscription data:', error);
@@ -118,7 +118,7 @@ export default function SchoolPaymentPage() {
   }, [currentUser, toast]);
 
   async function onSubmit(values: PaymentFormValues) {
-    if (!currentUser?.schoolId || !currentUser?.schoolName) {
+    if (!currentUser?.currentOrganizationId || !currentUser?.schoolName) {
       toast({
         title: 'Error',
         description: 'School information not found',
@@ -130,7 +130,7 @@ export default function SchoolPaymentPage() {
     setSubmitting(true);
     try {
       await submitPayment(
-        currentUser.schoolId,
+        currentUser.currentOrganizationId,
         currentUser.schoolName,
         values.planType,
         values.paymentMethod,
@@ -146,10 +146,10 @@ export default function SchoolPaymentPage() {
       });
 
       // Refresh data
-      const sub = await getSubscription(currentUser.schoolId);
+      const sub = await getSubscription(currentUser.currentOrganizationId);
       setSubscription(sub);
 
-      const paymentHistory = await getSchoolPayments(currentUser.schoolId);
+      const paymentHistory = await getSchoolPayments(currentUser.currentOrganizationId);
       setPayments(paymentHistory);
 
       // Reset form

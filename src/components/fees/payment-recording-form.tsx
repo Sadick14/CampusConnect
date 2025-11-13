@@ -88,17 +88,17 @@ export function PaymentRecordingForm({ onPaymentRecorded }: PaymentRecordingForm
 
   // Load students when dialog opens
   useEffect(() => {
-    if (open && currentUser?.schoolId) {
+    if (open && currentUser?.currentOrganizationId) {
       loadStudents();
     }
-  }, [open, currentUser?.schoolId]);
+  }, [open, currentUser?.currentOrganizationId]);
 
   // Load fee records when student is selected
   useEffect(() => {
-    if (selectedStudent && currentUser?.schoolId) {
+    if (selectedStudent && currentUser?.currentOrganizationId) {
       loadStudentFeeRecords(selectedStudent);
     }
-  }, [selectedStudent, currentUser?.schoolId]);
+  }, [selectedStudent, currentUser?.currentOrganizationId]);
 
   const loadStudents = async () => {
     try {
@@ -115,11 +115,11 @@ export function PaymentRecordingForm({ onPaymentRecorded }: PaymentRecordingForm
   };
 
   const loadStudentFeeRecords = async (studentId: string) => {
-    if (!currentUser?.schoolId) return;
+    if (!currentUser?.currentOrganizationId) return;
 
     setLoadingFeeRecords(true);
     try {
-      const records = await getStudentFeeRecords(currentUser.schoolId, studentId);
+      const records = await getStudentFeeRecords(currentUser.currentOrganizationId, studentId);
       // Filter to only show unpaid or partially paid fees
       const payableRecords = records.filter(record =>
         record.paymentStatus === 'pending' ||
@@ -146,7 +146,7 @@ export function PaymentRecordingForm({ onPaymentRecorded }: PaymentRecordingForm
   };
 
   const onSubmit = async (data: PaymentFormData) => {
-    if (!currentUser?.schoolId || !currentUser?.id) return;
+    if (!currentUser?.currentOrganizationId || !currentUser?.id) return;
 
     setLoading(true);
     try {
@@ -161,7 +161,7 @@ export function PaymentRecordingForm({ onPaymentRecorded }: PaymentRecordingForm
       }
 
       const paymentData: PaymentRecordInput = {
-        schoolId: currentUser.schoolId,
+        organizationId: currentUser.currentOrganizationId,
         studentId: data.studentId,
         studentName: selectedStudentData.name,
         feeRecordId: data.feeRecordId,

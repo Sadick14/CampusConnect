@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { ListPageSkeleton } from '@/components/common/page-skeletons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -84,7 +85,8 @@ interface StaffMember {
   experience?: number;
   salary?: number;
   isActive: boolean;
-  schoolId: string;
+  organizationId: string;
+  schoolId?: string; // Deprecated
   createdAt: Date;
   updatedAt: Date;
 }
@@ -142,10 +144,10 @@ export default function StaffPage() {
 
   useEffect(() => {
     async function load() {
-      if (!currentUser?.schoolId) return;
+      if (!currentUser?.currentOrganizationId) return;
       setLoading(true);
       try {
-        const staffList = await getSchoolStaff(currentUser.schoolId);
+        const staffList = await getSchoolStaff(currentUser.currentOrganizationId);
         setStaff(
           staffList.map((s) => ({
             ...s,
@@ -161,7 +163,7 @@ export default function StaffPage() {
       }
     }
     load();
-  }, [currentUser?.schoolId, toast]);
+  }, [currentUser?.currentOrganizationId, toast]);
 
   const resetForm = () => {
     setFName('');
@@ -175,10 +177,10 @@ export default function StaffPage() {
   };
 
   const handleCreateStaff = async () => {
-    if (!currentUser?.schoolId) return;
+    if (!currentUser?.currentOrganizationId) return;
     try {
       const created = await createStaffSvc({
-        schoolId: currentUser.schoolId,
+        organizationId: currentUser.currentOrganizationId,
         name: fName,
         email: fEmail,
         phone: fPhone || null,
@@ -274,11 +276,7 @@ export default function StaffPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <ListPageSkeleton />;
   }
 
   return (

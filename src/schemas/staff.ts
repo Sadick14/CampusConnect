@@ -3,7 +3,8 @@ import { Timestamp } from 'firebase/firestore';
 
 export interface StaffMember {
   id: string;
-  schoolId: string;
+  organizationId: string;
+  schoolId?: string; // Deprecated, use organizationId
   name: string;
   email: string;
   phone?: string | null;
@@ -20,7 +21,8 @@ export interface StaffMember {
 
 export const StaffMemberSchema = z.object({
   id: z.string().optional(),
-  schoolId: z.string(),
+  organizationId: z.string(),
+  schoolId: z.string().optional(), // Deprecated
   name: z.string().min(1, 'Name is required'),
   email: z.string().email(),
   phone: z.string().optional().nullable(),

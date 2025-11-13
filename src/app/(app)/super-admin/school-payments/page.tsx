@@ -44,7 +44,7 @@ import {
 } from '@/services/school-status';
 
 interface PaymentConfirmation {
-  schoolId: string;
+  organizationId: string;
   subscriptionType: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
   paymentAmount: number;
   paymentReference: string;
@@ -61,7 +61,7 @@ export default function SchoolPaymentManagementPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [paymentData, setPaymentData] = useState<PaymentConfirmation>({
-    schoolId: '',
+    organizationId: '',
     subscriptionType: 'MONTHLY',
     paymentAmount: 50,
     paymentReference: ''
@@ -144,7 +144,7 @@ export default function SchoolPaymentManagementPage() {
       
       setSelectedSchool(null);
       setPaymentData({
-        schoolId: '',
+        organizationId: '',
         subscriptionType: 'MONTHLY',
         paymentAmount: 50,
         paymentReference: ''
@@ -309,11 +309,11 @@ export default function SchoolPaymentManagementPage() {
                             <Button 
                               size="sm" 
                               variant="outline"
-                              onClick={() => {
+                                onClick={() => {
                                 setSelectedSchool(school);
                                 setPaymentData(prev => ({
                                   ...prev,
-                                  schoolId: school.id
+                                  organizationId: school.id
                                 }));
                               }}
                             >
@@ -363,7 +363,7 @@ export default function SchoolPaymentManagementPage() {
                                   setSelectedSchool(school);
                                   setPaymentData(prev => ({
                                     ...prev,
-                                    schoolId: school.id
+                                    organizationId: school.id
                                   }));
                                 }}
                               >

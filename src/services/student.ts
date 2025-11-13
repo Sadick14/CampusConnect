@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview Comprehensive service functions for managing student data in Firestore.
  * Supports full student lifecycle including registration, management, and queries.
@@ -14,14 +13,12 @@ import {
   deleteDoc, 
   query, 
   where,
-  orderBy,
   Timestamp,
   serverTimestamp,
-  limit,
-  startAfter,
   QueryConstraint
 } from 'firebase/firestore';
-import { getDb } from '@/lib/firebase-server';
+import { getFirestore } from 'firebase/firestore';
+import { app } from '@/lib/firebase';
 import type { 
   Student, 
   StudentFirestoreDoc,
@@ -31,6 +28,9 @@ import type {
   AcademicInfo,
   StudentAddress
 } from '@/schemas/student';
+
+// Use client-side Firestore
+const getDb = () => getFirestore(app);
 
 /**
  * Retrieves a single student by ID with all detailed information
@@ -68,31 +68,36 @@ export async function getStudentsByOrganization(
     const db = getDb();
     const studentsRef = collection(db, 'students');
     
-    const constraints: QueryConstraint[] = [
-      where('organizationId', '==', organizationId),
-      orderBy('firstName', 'asc')
-    ];
-
-    if (options?.classFilter) {
-      constraints.push(where('currentClass', '==', options.classFilter));
-    }
-
-    if (options?.statusFilter) {
-      constraints.push(where('status', '==', options.statusFilter));
-    }
-
-    if (options?.limit) {
-      constraints.push(limit(options.limit));
-    }
-
-    const q = query(studentsRef, ...constraints);
+    // Simple query - just filter by organizationId
+    const q = query(studentsRef, where('organizationId', '==', organizationId));
     const querySnapshot = await getDocs(q);
     
-    const students: Student[] = [];
+    let students: Student[] = [];
     querySnapshot.forEach((doc) => {
       const student = convertFirestoreDocToStudent(doc.id, doc.data() as StudentFirestoreDoc);
       students.push(student);
     });
+
+    // Filter client-side if options provided
+    if (options?.classFilter) {
+      students = students.filter(s => s.currentClass === options.classFilter);
+    }
+
+    if (options?.statusFilter) {
+      students = students.filter(s => s.status === options.statusFilter);
+    }
+
+    // Sort client-side by firstName
+    students.sort((a, b) => {
+      const nameA = a.firstName || '';
+      const nameB = b.firstName || '';
+      return nameA.localeCompare(nameB);
+    });
+
+    // Apply limit client-side if specified
+    if (options?.limit) {
+      students = students.slice(0, options.limit);
+    }
 
     return students;
   } catch (error: any) {
@@ -105,18 +110,17 @@ export async function getStudentsByOrganization(
  * Search students by name or student ID
  */
 export async function searchStudents(
-  schoolId: string,
+  organizationId: string,
   searchTerm: string
 ): Promise<Student[]> {
   try {
     const db = getDb();
     const studentsRef = collection(db, 'students');
     
-    // Firebase doesn't support wildcard search, so we fetch all and filter client-side
+    // Simple query - just filter by organizationId, then search client-side
     const q = query(
       studentsRef,
-      where('schoolId', '==', schoolId),
-      orderBy('firstName', 'asc')
+      where('organizationId', '==', organizationId)
     );
     
     const querySnapshot = await getDocs(q);
@@ -139,6 +143,13 @@ export async function searchStudents(
       }
     });
 
+    // Sort client-side by firstName
+    students.sort((a, b) => {
+      const nameA = a.firstName || '';
+      const nameB = b.firstName || '';
+      return nameA.localeCompare(nameB);
+    });
+
     return students;
   } catch (error: any) {
     console.error(`Error searching students:`, error);
@@ -150,7 +161,7 @@ export async function searchStudents(
  * Check if student ID number already exists in school
  */
 export async function checkStudentIdExists(
-  schoolId: string,
+  organizationId: string,
   studentId: string,
   excludeDocId?: string
 ): Promise<boolean> {
@@ -160,7 +171,7 @@ export async function checkStudentIdExists(
     
     const q = query(
       studentsRef,
-      where('schoolId', '==', schoolId),
+      where('organizationId', '==', organizationId),
       where('studentIdNumber', '==', studentId)
     );
     
@@ -186,15 +197,20 @@ export async function checkStudentIdExists(
  * Create a new student with comprehensive information
  */
 export async function createStudent(
-  schoolId: string,
+  organizationId: string,
   data: StudentRegistrationData,
-  createdBy?: string
+  createdBy?: string,
+  isDraft: boolean = false
 ): Promise<Student> {
   try {
+    console.log('[CreateStudent] Starting with organizationId:', organizationId);
+    console.log('[CreateStudent] isDraft:', isDraft);
+    console.log('[CreateStudent] Student name:', data.firstName, data.lastName);
+    
     // Check if student ID already exists
-    const exists = await checkStudentIdExists(schoolId, data.admissionNumber);
+    const exists = await checkStudentIdExists(organizationId, data.admissionNumber);
     if (exists) {
-      throw new Error(`Student ID ${data.admissionNumber} already exists in this school`);
+      throw new Error(`Student ID ${data.admissionNumber} already exists in this organization`);
     }
 
     const db = getDb();
@@ -273,17 +289,36 @@ export async function createStudent(
         previousSchool: data.previousSchool || null,
         previousClass: data.previousClass || null,
       },
-      status: 'active',
+      status: isDraft ? 'draft' : (data.feePayments && data.feePayments.length > 0 ? 'active' : 'inactive'),
       enrollmentDate: Timestamp.now(),
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
       createdBy: createdBy || null,
       notes: data.notes || null,
-      schoolId,
+      organizationId,
+      // Initial fee payments (collected during registration)
+      initialFeePayments: data.feePayments && data.feePayments.length > 0
+        ? data.feePayments.map(payment => ({
+            feeType: payment.feeType,
+            amount: payment.amount,
+            paymentMethod: payment.paymentMethod,
+            transactionId: payment.transactionId,
+            paymentDate: new Date().toISOString(),
+            notes: payment.notes,
+          }))
+        : null,
+      // Legacy fields for backward compatibility
+      admissionFeePaid: data.feePayments?.some(p => p.feeType === 'admission') || false,
+      admissionFeeAmount: data.feePayments?.find(p => p.feeType === 'admission')?.amount || null,
+      admissionFeePaymentDate: data.feePayments?.find(p => p.feeType === 'admission') ? new Date().toISOString() : null,
+      admissionFeePaymentMethod: data.feePayments?.find(p => p.feeType === 'admission')?.paymentMethod || null,
+      admissionFeeTransactionId: data.feePayments?.find(p => p.feeType === 'admission')?.transactionId || null,
     };
 
+    console.log('[CreateStudent] About to save student with organizationId:', studentData.organizationId);
+    
     const docRef = await addDoc(studentsRef, studentData);
-    console.log(`Student created successfully: ${docRef.id}`);
+    console.log(`[CreateStudent] Student created successfully with ID: ${docRef.id}, organizationId: ${studentData.organizationId}`);
 
     const createdStudent = await getStudent(docRef.id);
     if (!createdStudent) {
@@ -442,12 +477,121 @@ export async function getStudentCount(organizationId: string): Promise<number> {
 }
 
 /**
+ * Bulk import students from CSV data
+ */
+export async function bulkImportStudents(
+  organizationId: string,
+  csvData: Array<{
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender: 'male' | 'female' | 'other';
+    email?: string;
+    phone?: string;
+    currentClass: string; // Class ID
+    rollNumber?: string;
+    admissionNumber: string;
+    admissionDate?: string;
+    guardianName?: string;
+    guardianPhone?: string;
+    guardianEmail?: string;
+  }>,
+  createdBy: string
+): Promise<{ success: number; failed: number; errors: string[] }> {
+  const db = getDb();
+  const results = {
+    success: 0,
+    failed: 0,
+    errors: [] as string[],
+  };
+
+  for (let i = 0; i < csvData.length; i++) {
+    const row = csvData[i];
+    try {
+      // Validate required fields
+      if (!row.firstName || !row.lastName || !row.dateOfBirth || !row.currentClass || !row.admissionNumber) {
+        throw new Error(`Missing required fields`);
+      }
+
+      // Create student data
+      const studentData: Partial<StudentFirestoreDoc> = {
+        organizationId,
+        firstName: row.firstName.trim(),
+        lastName: row.lastName.trim(),
+        dateOfBirth: row.dateOfBirth,
+        gender: row.gender || 'male',
+        email: row.email || null,
+        phone: row.phone || null,
+        currentClass: row.currentClass,
+        section: null, // No longer using section field
+        rollNumber: row.rollNumber || null,
+        admissionNumber: row.admissionNumber.trim(),
+        studentIdNumber: row.admissionNumber.trim(), // Use admission number as student ID
+        address: {
+          street: '',
+          city: '',
+          state: '',
+          postalCode: '',
+          country: '',
+          homePhone: null,
+        },
+        guardians: row.guardianName ? [{
+          name: row.guardianName,
+          relationship: 'parent',
+          email: row.guardianEmail || '',
+          phone: row.guardianPhone || '',
+          occupation: '',
+          isEmergencyContact: true,
+        }] : [],
+        medicalInfo: {
+          bloodGroup: null,
+          allergies: null,
+          chronicConditions: null,
+          medicationsRequired: null,
+          doctorName: null,
+          doctorPhone: null,
+          insuranceProvider: null,
+          insurancePolicyNumber: null,
+        },
+        academicHistory: {
+          admissionDate: row.admissionDate || new Date().toISOString().split('T')[0],
+          admissionNumber: row.admissionNumber.trim(),
+          previousSchool: null,
+          previousClass: null,
+        },
+        profilePhotoUrl: null,
+        admissionFormUrl: null,
+        birthCertificateUrl: null,
+        transferCertificateUrl: null,
+        status: 'active',
+        enrollmentDate: row.admissionDate ? Timestamp.fromDate(new Date(row.admissionDate)) : Timestamp.now(),
+        withdrawalDate: null,
+        withdrawalReason: null,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        createdBy,
+        notes: null,
+      };
+
+      // Create student document
+      await addDoc(collection(db, 'students'), studentData);
+      results.success++;
+    } catch (error: any) {
+      results.failed++;
+      results.errors.push(`Row ${i + 2}: ${error.message}`); // Row number (accounting for header)
+    }
+  }
+
+  return results;
+}
+
+/**
  * Convert Firestore document to Student interface
  */
 function convertFirestoreDocToStudent(id: string, data: StudentFirestoreDoc): Student {
   return {
     id,
-    schoolId: data.schoolId,
+    organizationId: data.organizationId || data.organizationId || '', // Support both for migration
     firstName: data.firstName,
     lastName: data.lastName,
     dateOfBirth: data.dateOfBirth,

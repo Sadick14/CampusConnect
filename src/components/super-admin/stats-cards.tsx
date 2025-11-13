@@ -54,7 +54,7 @@ export function StatsCards({ data, loading }: StatsCardsProps) {
 
   const cards = [
     {
-      title: 'Total Schools',
+      title: 'Total Organizations',
       value: data.totalSchools,
       icon: Building2,
       description: `${data.activeSchools} active, ${data.suspendedSchools} suspended`,

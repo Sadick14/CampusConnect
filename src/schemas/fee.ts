@@ -249,7 +249,8 @@ export const StudentFeeRecordSchema = z.object({
 // Payment Record Schema
 export const PaymentRecordSchema = z.object({
   id: z.string().optional(),
-  schoolId: z.string(),
+  organizationId: z.string(),
+  schoolId: z.string().optional(), // Deprecated
   studentId: z.string(),
   studentName: z.string(),
   feeRecordId: z.string(),

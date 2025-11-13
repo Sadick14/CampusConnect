@@ -31,7 +31,7 @@ export function SchoolAccessGuard({ children }: SchoolAccessGuardProps) {
       }
 
       // Skip check if no user or no school
-      if (!currentUser || !currentUser.schoolId) {
+      if (!currentUser || !currentUser.currentOrganizationId) {
         setAccessAllowed(true);
         setLoading(false);
         return;
@@ -39,10 +39,10 @@ export function SchoolAccessGuard({ children }: SchoolAccessGuardProps) {
 
       try {
         // Get school data from memory (since we're using in-memory storage)
-        const school = getSchoolFromMemory(currentUser.schoolId);
+        const school = getSchoolFromMemory(currentUser.currentOrganizationId);
         
         if (!school) {
-          console.error('School not found for user:', currentUser.schoolId);
+          console.error('School not found for user:', currentUser.currentOrganizationId);
           setAccessAllowed(true);
           setLoading(false);
           return;

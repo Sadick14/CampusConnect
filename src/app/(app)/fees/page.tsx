@@ -21,6 +21,7 @@ import {
   deletePayment,
 } from '@/services/fee';
 import { formatCurrency } from '@/lib/currency';
+import { ListPageSkeleton } from '@/components/common/page-skeletons';
 import {
   Table,
   TableBody,
@@ -37,6 +38,13 @@ import {
   AlertDialogDescription,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -89,6 +97,7 @@ export default function FeesPage() {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [summary, setSummary] = useState<FeeSummary | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
 
   // Filters
@@ -101,15 +110,15 @@ export default function FeesPage() {
 
   useEffect(() => {
     async function loadData() {
-      if (!currentUser?.schoolId) return;
+      if (!currentUser?.currentOrganizationId) return;
 
       setLoading(true);
       try {
         // Load fee records and payments in parallel
         const [fees, paymentsData, summaryData] = await Promise.all([
-          getSchoolFeeRecords(currentUser.schoolId, { academicYear }),
-          getSchoolPayments(currentUser.schoolId),
-          calculateFeeSummary(currentUser.schoolId, academicYear),
+          getSchoolFeeRecords(currentUser.currentOrganizationId, { academicYear }),
+          getSchoolPayments(currentUser.currentOrganizationId),
+          calculateFeeSummary(currentUser.currentOrganizationId, academicYear),
         ]);
 
         setFeeRecords(fees);
@@ -128,7 +137,7 @@ export default function FeesPage() {
     };
 
     loadData();
-  }, [currentUser?.schoolId, academicYear, toast, refreshTrigger]);
+  }, [currentUser?.currentOrganizationId, academicYear, toast, refreshTrigger]);
 
   /**
    * Filter fee records based on search and filters
@@ -237,11 +246,7 @@ export default function FeesPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <ListPageSkeleton />;
   }
 
   return (
@@ -560,11 +565,14 @@ export default function FeesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem asChild>
-                                <a href={`#`} className="flex items-center">
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  View Details
-                                </a>
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setSelectedPayment(payment);
+                                  setViewDialogOpen(true);
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Details
                               </DropdownMenuItem>
                               {payment.status === 'pending' && (
                                 <>
@@ -600,6 +608,118 @@ export default function FeesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* View Payment Details Dialog */}
+      {selectedPayment && (
+        <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Payment Details</DialogTitle>
+              <DialogDescription>
+                Receipt #{selectedPayment.receiptNumber}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6">
+              {/* Payment Information */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Student Name</label>
+                  <p className="text-lg text-gray-900 mt-1">{selectedPayment.studentName}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Payment Type</label>
+                  <p className="text-lg text-gray-900 mt-1 capitalize">
+                    {selectedPayment.paymentType.replace(/_/g, ' ')}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Amount</label>
+                  <p className="text-2xl font-bold text-green-600 mt-1">
+                    {formatCurrency(selectedPayment.amount)}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Payment Method</label>
+                  <p className="text-lg text-gray-900 mt-1 capitalize">
+                    {selectedPayment.paymentMethod.replace(/_/g, ' ')}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Receipt Number</label>
+                  <p className="text-lg text-gray-900 mt-1 font-mono">
+                    {selectedPayment.receiptNumber}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Status</label>
+                  <div className="mt-1">
+                    <Badge className={getStatusBadgeColor(selectedPayment.status)}>
+                      {selectedPayment.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Payment Date</label>
+                  <p className="text-lg text-gray-900 mt-1">
+                    {new Date(
+                      (selectedPayment.paymentDate as any).toDate?.() || selectedPayment.paymentDate
+                    ).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Transaction Details */}
+              {(selectedPayment.transactionId || selectedPayment.notes) && (
+                <div className="space-y-3 pt-4 border-t">
+                  <h3 className="font-semibold text-gray-900">Transaction Details</h3>
+                  {selectedPayment.transactionId && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Transaction ID</label>
+                      <p className="text-lg text-gray-900 mt-1 font-mono">
+                        {selectedPayment.transactionId}
+                      </p>
+                    </div>
+                  )}
+                  {selectedPayment.notes && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Notes</label>
+                      <p className="text-lg text-gray-900 mt-1">{selectedPayment.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Metadata */}
+              <div className="space-y-3 pt-4 border-t">
+                <h3 className="font-semibold text-gray-900">System Information</h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {selectedPayment.recordedBy && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Recorded By</label>
+                      <p className="text-sm text-gray-900 mt-1">{selectedPayment.recordedBy}</p>
+                    </div>
+                  )}
+                  {selectedPayment.createdAt && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-600">Created At</label>
+                      <p className="text-sm text-gray-900 mt-1">
+                        {new Date(
+                          (selectedPayment.createdAt as any).toDate?.() || selectedPayment.createdAt
+                        ).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

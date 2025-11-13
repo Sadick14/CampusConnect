@@ -38,13 +38,13 @@ const db = getDb();
 /**
  * Initialize trial subscription for a new school
  */
-export async function initializeTrialSubscription(schoolId: string, schoolName: string): Promise<void> {
+export async function initializeTrialSubscription(organizationId: string, schoolName: string): Promise<void> {
   try {
     const now = new Date();
     const trialEndDate = calculateTrialExpiry(now);
     
     const subscriptionData: Partial<Subscription> = {
-      schoolId,
+      organizationId,
       schoolName,
       
       // Trial Information
@@ -97,11 +97,11 @@ export async function initializeTrialSubscription(schoolId: string, schoolName: 
     };
     
     // Save to subscriptions collection
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, organizationId);
     await setDoc(subscriptionRef, subscriptionData);
     
     // Update school document with subscription fields
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: 'trial',
       subscriptionType: 'TRIAL',
@@ -118,7 +118,7 @@ export async function initializeTrialSubscription(schoolId: string, schoolName: 
       updatedAt: Timestamp.now(),
     });
     
-    console.log(`Trial subscription initialized for school: ${schoolId}`);
+    console.log(`Trial subscription initialized for school: ${organizationId}`);
   } catch (error) {
     console.error('Error initializing trial subscription:', error);
     throw new Error('Failed to initialize trial subscription');
@@ -128,9 +128,9 @@ export async function initializeTrialSubscription(schoolId: string, schoolName: 
 /**
  * Get subscription details for a school
  */
-export async function getSubscription(schoolId: string): Promise<Subscription | null> {
+export async function getSubscription(organizationId: string): Promise<Subscription | null> {
   try {
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, organizationId);
     const subscriptionSnap = await getDoc(subscriptionRef);
     
     if (!subscriptionSnap.exists()) {
@@ -151,12 +151,12 @@ export async function getSubscription(schoolId: string): Promise<Subscription | 
 /**
  * Update subscription status (check expiry and lock if needed)
  */
-export async function updateSubscriptionStatus(schoolId: string): Promise<void> {
+export async function updateSubscriptionStatus(organizationId: string): Promise<void> {
   try {
-    const subscription = await getSubscription(schoolId);
+    const subscription = await getSubscription(organizationId);
     
     if (!subscription) {
-      console.warn(`No subscription found for school: ${schoolId}`);
+      console.warn(`No subscription found for school: ${organizationId}`);
       return;
     }
     
@@ -188,7 +188,7 @@ export async function updateSubscriptionStatus(schoolId: string): Promise<void> 
     
     // Update if status changed
     if (newStatus !== subscription.subscriptionStatus) {
-      const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, schoolId);
+      const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, organizationId);
       await updateDoc(subscriptionRef, {
         subscriptionStatus: newStatus,
         trialDaysRemaining: daysRemaining,
@@ -196,14 +196,14 @@ export async function updateSubscriptionStatus(schoolId: string): Promise<void> 
       });
       
       // Update school document
-      const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+      const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
       await updateDoc(schoolRef, {
         subscriptionStatus: newStatus,
         daysRemaining,
         updatedAt: Timestamp.now(),
       });
       
-      console.log(`Subscription status updated for school ${schoolId}: ${newStatus}`);
+      console.log(`Subscription status updated for school ${organizationId}: ${newStatus}`);
     }
   } catch (error) {
     console.error('Error updating subscription status:', error);
@@ -214,11 +214,11 @@ export async function updateSubscriptionStatus(schoolId: string): Promise<void> 
 /**
  * Check if school has active subscription (not locked/expired)
  */
-export async function hasActiveSubscription(schoolId: string): Promise<boolean> {
+export async function hasActiveSubscription(organizationId: string): Promise<boolean> {
   try {
-    await updateSubscriptionStatus(schoolId); // Update status first
+    await updateSubscriptionStatus(organizationId); // Update status first
     
-    const subscription = await getSubscription(schoolId);
+    const subscription = await getSubscription(organizationId);
     
     if (!subscription) {
       return false;
@@ -235,7 +235,7 @@ export async function hasActiveSubscription(schoolId: string): Promise<boolean> 
  * Submit payment for subscription (upfront or monthly)
  */
 export async function submitPayment(
-  schoolId: string,
+  organizationId: string,
   schoolName: string,
   planType: Exclude<SubscriptionPlanType, 'TRIAL'>,
   paymentType: 'upfront' | 'monthly',
@@ -259,7 +259,7 @@ export async function submitPayment(
     
     // Create payment record
     const paymentData: Partial<PaymentRecord> = {
-      schoolId,
+      organizationId,
       schoolName,
       amount,
       paymentType,
@@ -286,7 +286,7 @@ export async function submitPayment(
     await setDoc(paymentRef, paymentData);
     
     // Update subscription with pending payment
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, organizationId);
     await updateDoc(subscriptionRef, {
       subscriptionStatus: 'pending_payment',
       currentPaymentStatus: 'pending',
@@ -302,14 +302,14 @@ export async function submitPayment(
     });
     
     // Update school document
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: 'pending_payment',
       paymentStatus: 'pending',
       updatedAt: Timestamp.now(),
     });
     
-    console.log(`Payment submitted for school ${schoolId}: ${paymentRef.id}`);
+    console.log(`Payment submitted for school ${organizationId}: ${paymentRef.id}`);
     return paymentRef.id;
   } catch (error) {
     console.error('Error submitting payment:', error);
@@ -352,8 +352,8 @@ export async function approvePayment(
     const billingEnd = new Date(payment.billingEndDate);
     
     // Get current subscription
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, payment.schoolId);
-    const subscription = await getSubscription(payment.schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, payment.organizationId);
+    const subscription = await getSubscription(payment.organizationId);
     
     // Build update object based on payment type
     const updateData: any = {
@@ -388,7 +388,7 @@ export async function approvePayment(
     await updateDoc(subscriptionRef, updateData);
     
     // Update school document
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, payment.schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, payment.organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: 'active',
       subscriptionType: payment.subscriptionType,
@@ -402,7 +402,7 @@ export async function approvePayment(
       updatedAt: Timestamp.now(),
     });
     
-    console.log(`Payment approved for school ${payment.schoolId} (${payment.paymentType})`);
+    console.log(`Payment approved for school ${payment.organizationId} (${payment.paymentType})`);
   } catch (error) {
     console.error('Error approving payment:', error);
     throw new Error('Failed to approve payment');
@@ -440,7 +440,7 @@ export async function rejectPayment(
     });
     
     // Update subscription
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, payment.schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, payment.organizationId);
     await updateDoc(subscriptionRef, {
       subscriptionStatus: 'locked',
       currentPaymentStatus: 'rejected',
@@ -449,14 +449,14 @@ export async function rejectPayment(
     });
     
     // Update school document
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, payment.schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, payment.organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: 'locked',
       paymentStatus: 'rejected',
       updatedAt: Timestamp.now(),
     });
     
-    console.log(`Payment rejected for school ${payment.schoolId}`);
+    console.log(`Payment rejected for school ${payment.organizationId}`);
   } catch (error) {
     console.error('Error rejecting payment:', error);
     throw new Error('Failed to reject payment');
@@ -507,11 +507,11 @@ export async function getPendingPayments(): Promise<PaymentRecord[]> {
 /**
  * Get payment history for a school
  */
-export async function getSchoolPayments(schoolId: string): Promise<PaymentRecord[]> {
+export async function getSchoolPayments(organizationId: string): Promise<PaymentRecord[]> {
   try {
     const paymentsQuery = query(
       collection(db, PAYMENTS_COLLECTION),
-      where('schoolId', '==', schoolId),
+      where('organizationId', '==', organizationId),
       orderBy('submittedAt', 'desc')
     );
     
@@ -535,21 +535,21 @@ export async function getSchoolPayments(schoolId: string): Promise<PaymentRecord
 /**
  * Manually lock a school account (Superadmin only)
  */
-export async function lockSchoolAccount(schoolId: string): Promise<void> {
+export async function lockSchoolAccount(organizationId: string): Promise<void> {
   try {
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, organizationId);
     await updateDoc(subscriptionRef, {
       subscriptionStatus: 'locked',
       updatedAt: new Date().toISOString(),
     });
     
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: 'locked',
       updatedAt: Timestamp.now(),
     });
     
-    console.log(`School account locked: ${schoolId}`);
+    console.log(`School account locked: ${organizationId}`);
   } catch (error) {
     console.error('Error locking school account:', error);
     throw new Error('Failed to lock school account');
@@ -559,9 +559,9 @@ export async function lockSchoolAccount(schoolId: string): Promise<void> {
 /**
  * Manually unlock a school account (Superadmin only)
  */
-export async function unlockSchoolAccount(schoolId: string): Promise<void> {
+export async function unlockSchoolAccount(organizationId: string): Promise<void> {
   try {
-    const subscription = await getSubscription(schoolId);
+    const subscription = await getSubscription(organizationId);
     
     if (!subscription) {
       throw new Error('Subscription not found');
@@ -578,19 +578,19 @@ export async function unlockSchoolAccount(schoolId: string): Promise<void> {
       newStatus = isExpired(subEnd) ? 'expired' : 'active';
     }
     
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, organizationId);
     await updateDoc(subscriptionRef, {
       subscriptionStatus: newStatus,
       updatedAt: new Date().toISOString(),
     });
     
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: newStatus,
       updatedAt: Timestamp.now(),
     });
     
-    console.log(`School account unlocked: ${schoolId}`);
+    console.log(`School account unlocked: ${organizationId}`);
   } catch (error) {
     console.error('Error unlocking school account:', error);
     throw new Error('Failed to unlock school account');
@@ -600,9 +600,9 @@ export async function unlockSchoolAccount(schoolId: string): Promise<void> {
 /**
  * Update student count and recalculate monthly fee
  */
-export async function updateStudentCount(schoolId: string, studentCount: number): Promise<void> {
+export async function updateStudentCount(organizationId: string, studentCount: number): Promise<void> {
   try {
-    const subscription = await getSubscription(schoolId);
+    const subscription = await getSubscription(organizationId);
     
     if (!subscription) {
       throw new Error('Subscription not found');
@@ -615,7 +615,7 @@ export async function updateStudentCount(schoolId: string, studentCount: number)
     
     const monthlyFee = calculateMonthlyFee(studentCount, subscription.subscriptionType as Exclude<SubscriptionPlanType, 'TRIAL'>);
     
-    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, schoolId);
+    const subscriptionRef = doc(db, SUBSCRIPTIONS_COLLECTION, organizationId);
     await updateDoc(subscriptionRef, {
       currentStudentCount: studentCount,
       monthlyFeeAmount: monthlyFee,
@@ -623,7 +623,7 @@ export async function updateStudentCount(schoolId: string, studentCount: number)
       updatedAt: new Date().toISOString(),
     });
     
-    console.log(`Student count updated for school ${schoolId}: ${studentCount} students, GHS ${monthlyFee}/month`);
+    console.log(`Student count updated for school ${organizationId}: ${studentCount} students, GHS ${monthlyFee}/month`);
   } catch (error) {
     console.error('Error updating student count:', error);
     throw new Error('Failed to update student count');
@@ -633,7 +633,7 @@ export async function updateStudentCount(schoolId: string, studentCount: number)
 /**
  * Get current pricing for a school
  */
-export async function getSchoolPricing(schoolId: string): Promise<{
+export async function getSchoolPricing(organizationId: string): Promise<{
   planType: SubscriptionPlanType;
   studentCount: number;
   upfrontFee: number;
@@ -643,7 +643,7 @@ export async function getSchoolPricing(schoolId: string): Promise<{
   nextBillingAmount: number;
   nextBillingDate: string | null;
 }> {
-  const subscription = await getSubscription(schoolId);
+  const subscription = await getSubscription(organizationId);
   
   if (!subscription) {
     throw new Error('Subscription not found');

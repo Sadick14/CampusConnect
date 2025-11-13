@@ -28,7 +28,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from '@/components/ui/skeleton';
+import { DashboardSkeleton } from '@/components/common/page-skeletons';
 import { useToast } from "@/hooks/use-toast";
 import { 
   getDashboardStats, 
@@ -45,19 +46,6 @@ import { getOrganizationById } from "@/services/organization";
 import { type Organization } from "@/schemas/organization";
 import { getUserCurrentOrganization, setUserCurrentOrganization } from "@/services/user-organization";
 import { formatCurrency } from "@/lib/currency";
-
-const dashboardItems = [
-  { title: "Organizations", href: "/organizations", icon: Building2, description: "Manage organizations", roles: ['superadmin'] },
-  { title: "Users", href: "/users", icon: Users, description: "Administer user accounts", roles: ['superadmin', 'organization_owner'] },
-  { title: "Students", href: "/students", icon: GraduationCap, description: "Student records and profiles", roles: ['organization_owner', 'teacher'] },
-  { title: "Staff", href: "/staff", icon: Briefcase, description: "Manage teaching and non-teaching staff", roles: ['organization_owner'] },
-  { title: "Attendance", href: "/attendance", icon: ClipboardCheck, description: "Track student attendance", roles: ['organization_owner', 'teacher'] },
-  { title: "Grades", href: "/grades", icon: ClipboardList, description: "Manage grades and assessments", roles: ['organization_owner', 'teacher'] },
-  { title: "Fees", href: "/fees", icon: CreditCard, description: "Oversee fee collection and status", roles: ['organization_owner'] },
-  { title: "Expenditure", href: "/expenditure", icon: Receipt, description: "Track school expenditures", roles: ['organization_owner'] },
-  { title: "Timetables", href: "/timetables", icon: CalendarClock, description: "Create and manage timetables", roles: ['organization_owner', 'teacher', 'student'] },
-  { title: "AI Reports", href: "/reports", icon: Sparkles, description: "Generate AI-powered reports", roles: ['organization_owner'] },
-];
 
 export default function HomePage() {
   const { currentUser, loading: authLoading } = useAuth();
@@ -163,9 +151,16 @@ export default function HomePage() {
   // Fetch dashboard statistics
   useEffect(() => {
     const fetchStats = async () => {
-      if (!currentOrganization?.id || organizationLoading) return;
+      if (!currentOrganization?.id || organizationLoading) {
+        console.log('[Dashboard Page] Skipping stats fetch - no org or loading:', { 
+          hasOrg: !!currentOrganization?.id, 
+          organizationLoading 
+        });
+        return;
+      }
 
       try {
+        console.log('[Dashboard Page] Fetching stats for organization:', currentOrganization.id);
         setStatsLoading(true);
         const organizationId = currentOrganization.id;
         
@@ -178,6 +173,15 @@ export default function HomePage() {
           getRecentActivities(organizationId),
         ]);
 
+        console.log('[Dashboard Page] Stats loaded:', { 
+          stats, 
+          students, 
+          attendance, 
+          fees, 
+          gradesCount: grades.length, 
+          activitiesCount: activities.length 
+        });
+
         setDashboardStats(stats);
         setStudentStats(students);
         setAttendanceStats(attendance);
@@ -185,10 +189,10 @@ export default function HomePage() {
         setGradeDistribution(grades);
         setRecentActivities(activities);
       } catch (error) {
-        console.error('Error fetching dashboard stats:', error);
+        console.error('[Dashboard Page] Error fetching dashboard stats:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load dashboard statistics',
+          description: error instanceof Error ? error.message : 'Failed to load dashboard statistics',
           variant: 'destructive',
         });
       } finally {
@@ -208,34 +212,10 @@ export default function HomePage() {
       return message;
     }
     return "Welcome to Syntra!";
-  };  const filteredDashboardItems = dashboardItems.filter(item => {
-    if (!currentUser || !item.roles) return true;
-    if (!currentUser.role) return false;
-    
-    // Organization owners have full admin privileges
-    if (currentUser.role === 'organization_owner') {
-      return item.roles.includes('organization_owner');
-    }
-    
-    return item.roles.includes(currentUser.role);
-  });
+  };
 
   if (authLoading || organizationLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-        <div className="text-center animate-fade-in-up">
-          <div className="relative mb-6">
-            <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl">
-              <Loader2 className="h-8 w-8 animate-spin text-white" />
-            </div>
-            <div className="absolute -inset-2 rounded-3xl bg-gradient-to-br from-blue-500/20 to-purple-600/20 blur-xl"></div>
-          </div>
-          <p className="text-gray-600 font-medium">
-            {authLoading ? 'Loading your profile...' : 'Loading organization...'}
-          </p>
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (!currentUser) {
@@ -569,29 +549,51 @@ export default function HomePage() {
       <div className="card-modern rounded-3xl p-8">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Quick Actions</h2>
-          <p className="text-gray-600">Navigate to key sections of your organization</p>
+          <p className="text-gray-600">Common tasks and actions</p>
         </div>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {filteredDashboardItems.map((item, index) => (
-            <Link href={item.href} key={item.title} className="group">
-              <div className="card-modern rounded-2xl p-6 cursor-pointer hover:scale-105 transition-all duration-300 animate-fade-in-up"
-                   style={{ animationDelay: `${index * 50}ms` }}>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 max-w-2xl">
+          {/* Add Student Button */}
+          {(currentUser?.role === 'school_admin' || currentUser?.role === 'organization_owner') && (
+            <Link href="/students?action=add" className="group">
+              <div className="card-modern rounded-2xl p-6 cursor-pointer hover:scale-105 transition-all duration-300 animate-fade-in-up">
                 <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow duration-300">
-                    <item.icon className="h-7 w-7 text-white" />
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow duration-300">
+                    <GraduationCap className="h-7 w-7 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900 group-hover:text-green-600 transition-colors mb-1">
-                      {item.title}
+                    <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-1">
+                      Add Student
                     </h3>
                     <p className="text-sm text-gray-600 leading-relaxed">
-                      {item.description}
+                      Register a new student
                     </p>
                   </div>
                 </div>
               </div>
             </Link>
-          ))}
+          )}
+          
+          {/* Add Payment Button */}
+          {(currentUser?.role === 'school_admin' || currentUser?.role === 'organization_owner') && (
+            <Link href="/fees?action=add" className="group">
+              <div className="card-modern rounded-2xl p-6 cursor-pointer hover:scale-105 transition-all duration-300 animate-fade-in-up"
+                   style={{ animationDelay: '50ms' }}>
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow duration-300">
+                    <CreditCard className="h-7 w-7 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 group-hover:text-green-600 transition-colors mb-1">
+                      Add Payment
+                    </h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Record a fee payment
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          )}
         </div>
       </div>
     </div>

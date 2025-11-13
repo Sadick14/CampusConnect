@@ -45,6 +45,7 @@ export interface RecentActivity {
  */
 export async function getDashboardStats(organizationId: string): Promise<DashboardStats> {
   try {
+    console.log('[Dashboard] Fetching stats for organization:', organizationId);
     const db = getDb();
     
     // Get students count and status
@@ -52,16 +53,22 @@ export async function getDashboardStats(organizationId: string): Promise<Dashboa
     const studentsQuery = query(studentsRef, where('organizationId', '==', organizationId));
     const studentDocs = await getDocs(studentsQuery);
     
+    console.log('[Dashboard] Found students:', studentDocs.size);
+    
     const totalStudents = studentDocs.size;
     const activeStudents = studentDocs.docs.filter(
       doc => doc.data().status === 'active'
     ).length;
+
+    console.log('[Dashboard] Active students:', activeStudents);
 
     // Get staff count
     const staffRef = collection(db, 'staff');
     const staffQuery = query(staffRef, where('organizationId', '==', organizationId));
     const staffDocs = await getDocs(staffQuery);
     const totalStaff = staffDocs.size;
+
+    console.log('[Dashboard] Total staff:', totalStaff);
 
     // Get unique classes
     const classes = new Set<string>();
@@ -71,6 +78,8 @@ export async function getDashboardStats(organizationId: string): Promise<Dashboa
       }
     });
     const totalClasses = classes.size;
+
+    console.log('[Dashboard] Total classes:', totalClasses);
 
     // Calculate attendance rate (average from recent records)
     const attendanceRef = collection(db, 'attendance');
@@ -89,6 +98,8 @@ export async function getDashboardStats(organizationId: string): Promise<Dashboa
       attendanceRate = Math.round((total / attendanceDocs.size) * 100);
     }
 
+    console.log('[Dashboard] Attendance rate:', attendanceRate);
+
     // Get fees statistics
     const feesRef = collection(db, 'fees');
     const feesQuery = query(feesRef, where('organizationId', '==', organizationId));
@@ -105,7 +116,9 @@ export async function getDashboardStats(organizationId: string): Promise<Dashboa
       }
     });
 
-    return {
+    console.log('[Dashboard] Fees - collected:', collected, 'pending:', pending);
+
+    const stats = {
       totalStudents,
       activeStudents,
       totalStaff,
@@ -117,8 +130,11 @@ export async function getDashboardStats(organizationId: string): Promise<Dashboa
         total: collected + pending,
       },
     };
+
+    console.log('[Dashboard] Final stats:', stats);
+    return stats;
   } catch (error) {
-    console.error('Error getting dashboard stats:', error);
+    console.error('[Dashboard] Error getting dashboard stats:', error);
     throw error;
   }
 }

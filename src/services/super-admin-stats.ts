@@ -23,7 +23,7 @@ export interface SystemStats {
 
 export interface SchoolActivity {
   id: string;
-  schoolId: string;
+  organizationId: string;
   name: string;
   schoolName: string;
   lastActivity: string | null;
@@ -44,7 +44,7 @@ export interface RevenueMetrics {
   quarterly: number;
   yearly: number;
   bySchool: Array<{
-    schoolId: string;
+    organizationId: string;
     schoolName: string;
     amount: number;
   }>;
@@ -176,7 +176,7 @@ export async function getSchoolActivities(): Promise<SchoolActivity[]> {
       
       // Get user counts for this school
       const usersRef = collection(db, 'users');
-      const schoolUsersQuery = query(usersRef, where('schoolId', '==', schoolDoc.id));
+      const schoolUsersQuery = query(usersRef, where('organizationId', '==', schoolDoc.id));
       const schoolUsersSnap = await getDocs(schoolUsersQuery);
       
       let studentCount = 0;
@@ -203,7 +203,7 @@ export async function getSchoolActivities(): Promise<SchoolActivity[]> {
       
       // Get revenue for this school
       const paymentsRef = collection(db, 'payments');
-      const schoolPaymentsQuery = query(paymentsRef, where('schoolId', '==', schoolDoc.id), where('status', '==', 'approved'));
+      const schoolPaymentsQuery = query(paymentsRef, where('organizationId', '==', schoolDoc.id), where('status', '==', 'approved'));
       const schoolPaymentsSnap = await getDocs(schoolPaymentsQuery);
       
       let totalRevenue = 0;
@@ -213,7 +213,7 @@ export async function getSchoolActivities(): Promise<SchoolActivity[]> {
       
       activities.push({
         id: schoolDoc.id,
-        schoolId: schoolDoc.id,
+        organizationId: schoolDoc.id,
         name: schoolData.name || 'Unknown School',
         schoolName: schoolData.name || 'Unknown School',
         lastActivity: schoolData.lastActivityAt?.toDate?.()?.toISOString() || null,
@@ -286,20 +286,20 @@ export async function getRevenueMetrics(): Promise<RevenueMetrics> {
       if (paymentDate >= yearAgo) yearly += amount;
       
       // By school
-      const schoolId = data.schoolId;
+      const organizationId = data.organizationId;
       const schoolName = data.schoolName || 'Unknown';
-      if (schoolId) {
-        const existing = bySchoolMap.get(schoolId);
+      if (organizationId) {
+        const existing = bySchoolMap.get(organizationId);
         if (existing) {
           existing.amount += amount;
         } else {
-          bySchoolMap.set(schoolId, { name: schoolName, amount });
+          bySchoolMap.set(organizationId, { name: schoolName, amount });
         }
       }
     });
     
-    const bySchool = Array.from(bySchoolMap.entries()).map(([schoolId, data]) => ({
-      schoolId,
+    const bySchool = Array.from(bySchoolMap.entries()).map(([organizationId, data]) => ({
+      organizationId,
       schoolName: data.name,
       amount: data.amount,
     })).sort((a, b) => b.amount - a.amount);

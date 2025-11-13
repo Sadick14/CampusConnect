@@ -87,7 +87,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
     try {
         const schoolsRef = collection(db, 'schools');
         const newSchoolRef = doc(schoolsRef); // Generate a new ID
-        const schoolId = newSchoolRef.id;
+        const organizationId = newSchoolRef.id;
         const now = new Date();
         const trialEndDate = calculateTrialExpiry(now);
         
@@ -120,7 +120,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
         };
         
         await setDoc(newSchoolRef, schoolToAdd);
-        console.log(`School ${schoolData.name} registered in Firestore with ID: ${schoolId}`);
+        console.log(`School ${schoolData.name} registered in Firestore with ID: ${organizationId}`);
 
         // 4. Create Admin User Profile in Firestore
         const adminProfileRef = doc(db, 'users', adminAuthUid);
@@ -128,7 +128,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
             name: `${schoolData.name} Admin`,
             email: schoolData.adminEmail,
             role: 'school_admin',
-            schoolId: schoolId,
+            organizationId: organizationId,
             schoolName: schoolData.name,
             schoolLogoUrl: null,
             class: null,
@@ -142,7 +142,7 @@ export async function registerSchool(schoolData: NewSchoolData): Promise<School>
 
         // Return the created school
         return {
-            id: schoolId,
+            id: organizationId,
             ...schoolToAdd,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -254,7 +254,7 @@ export async function getSchoolById(id: string): Promise<School | null> {
  * Only callable by the school's admin.
  */
 export async function updateSchoolProfile(
-  schoolId: string,
+  organizationId: string,
   data: UpdateSchoolProfileData,
   logoFile: File | null,
   currentAdminUid: string
@@ -263,7 +263,7 @@ export async function updateSchoolProfile(
     const db = getDb();
     
     // 1. Verify Admin Permissions (Check Firestore)
-    const schoolRef = doc(db, 'schools', schoolId);
+    const schoolRef = doc(db, 'schools', organizationId);
     const schoolSnap = await getDoc(schoolRef);
     
     if (!schoolSnap.exists()) {
@@ -299,17 +299,17 @@ export async function updateSchoolProfile(
     // 2. Handle Logo Upload (if provided - Storage interaction remains)
     let newLogoUrl: string | null = existingSchoolData.logoUrl ?? null;
     if (logoFile) {
-      console.log(`Uploading new logo for school ${schoolId}...`);
+      console.log(`Uploading new logo for school ${organizationId}...`);
       const fileExtension = logoFile.name.split('.').pop();
       const logoFileName = `logo.${fileExtension}`;
-      const logoStorageRef = ref(storage, `school-logos/${schoolId}/${logoFileName}`);
+      const logoStorageRef = ref(storage, `school-logos/${organizationId}/${logoFileName}`);
 
       // Delete previous logo if it exists
       if (existingSchoolData.logoUrl) {
         try {
           const oldLogoRef = ref(storage, existingSchoolData.logoUrl);
           await deleteObject(oldLogoRef);
-          console.log(`Deleted previous logo for school ${schoolId}`);
+          console.log(`Deleted previous logo for school ${organizationId}`);
         } catch (deleteError: any) {
           console.warn(`Could not delete previous logo (${existingSchoolData.logoUrl}): ${deleteError.message}`);
         }
@@ -320,14 +320,14 @@ export async function updateSchoolProfile(
       newLogoUrl = await getDownloadURL(uploadResult.ref);
       updateData.logoUrl = newLogoUrl;
       needsUpdate = true;
-      console.log(`Logo uploaded successfully for school ${schoolId}. URL: ${newLogoUrl}`);
+      console.log(`Logo uploaded successfully for school ${organizationId}. URL: ${newLogoUrl}`);
     }
 
     // 3. Update Firestore
     if (needsUpdate) {
         updateData.updatedAt = serverTimestamp();
         await updateDoc(schoolRef, updateData);
-        console.log(`School profile updated successfully in Firestore for ID: ${schoolId}`);
+        console.log(`School profile updated successfully in Firestore for ID: ${organizationId}`);
 
         // If school name or logo changed, update the admin's user profile in Firestore
         if (updateData.name || updateData.hasOwnProperty('logoUrl')) {
@@ -344,18 +344,18 @@ export async function updateSchoolProfile(
             }
         }
     } else {
-        console.log(`No changes detected for school profile ${schoolId}. Skipping Firestore update.`);
+        console.log(`No changes detected for school profile ${organizationId}. Skipping Firestore update.`);
     }
 
     // Return the updated school
-    const updatedSchool = await getSchoolById(schoolId);
+    const updatedSchool = await getSchoolById(organizationId);
     if (!updatedSchool) {
         throw new Error('Failed to retrieve updated school');
     }
     return updatedSchool;
 
   } catch (error: any) {
-    console.error(`Error updating school profile for ID ${schoolId}:`, error);
+    console.error(`Error updating school profile for ID ${organizationId}:`, error);
     if (error.code?.startsWith('storage/')) {
         throw new Error(`Failed to update school logo: ${error.message}`);
     }

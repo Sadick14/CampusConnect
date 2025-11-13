@@ -35,6 +35,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     '/schools/payment',
     '/settings',
     '/logout',
+    '/init-subscription',
   ];
 
   // Check if current route is public
@@ -50,18 +51,18 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
         return;
       }
 
-      // No school ID - probably teacher/student without school assignment
-      if (!currentUser?.schoolId) {
+      // No organization ID - probably user without organization assignment
+      if (!currentUser?.currentOrganizationId) {
         setLoading(false);
         return;
       }
 
       try {
         // Update subscription status first
-        await updateSubscriptionStatus(currentUser.schoolId);
+        await updateSubscriptionStatus(currentUser.currentOrganizationId);
         
         // Get current subscription
-        const sub = await getSubscription(currentUser.schoolId);
+        const sub = await getSubscription(currentUser.currentOrganizationId);
         setSubscription(sub);
 
         // If no subscription found, something is wrong
@@ -124,11 +125,13 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
           <CardContent className="space-y-4">
             <Alert variant="destructive">
               <AlertDescription>
-                Please contact support at support@syntra.app or try again later.
+                {error.includes('No subscription found') 
+                  ? 'Your subscription has not been activated yet. Please contact your super admin to activate your 30-day free trial.'
+                  : 'Please contact support at support@syntra.app or try again later.'}
               </AlertDescription>
             </Alert>
             <div className="flex gap-2">
-              <Button onClick={() => window.location.reload()} className="flex-1">
+              <Button onClick={() => window.location.reload()} variant="outline" className="flex-1">
                 Try Again
               </Button>
               <Button variant="outline" onClick={() => router.push('/logout')} className="flex-1">
@@ -142,7 +145,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   }
 
   // Superadmin or no subscription check needed
-  if (currentUser?.role === 'superadmin' || !currentUser?.schoolId) {
+  if (currentUser?.role === 'superadmin' || !currentUser?.currentOrganizationId) {
     return <>{children}</>;
   }
 

@@ -57,7 +57,8 @@ export interface AcademicInfo {
 export interface Student {
   // Basic Information
   id: string;
-  schoolId: string;
+  organizationId: string;
+  schoolId?: string; // Deprecated, use organizationId
   firstName: string;
   lastName: string;
   dateOfBirth: string; // ISO date format
@@ -91,10 +92,27 @@ export interface Student {
   transferCertificateUrl?: string | null;
 
   // Status and Enrollment
-  status: 'active' | 'inactive' | 'graduated' | 'transferred' | 'suspended';
+  status: 'active' | 'inactive' | 'graduated' | 'transferred' | 'suspended' | 'draft';
   enrollmentDate: string;
   withdrawalDate?: string | null;
   withdrawalReason?: string | null;
+
+  // Fee Payment Information (Legacy - kept for backward compatibility)
+  admissionFeePaid?: boolean;
+  admissionFeeAmount?: number | null;
+  admissionFeePaymentDate?: string | null;
+  admissionFeePaymentMethod?: string | null;
+  admissionFeeTransactionId?: string | null;
+
+  // Initial Fee Payments (collected during registration)
+  initialFeePayments?: {
+    feeType: 'admission' | 'school_fees' | 'books' | 'uniform' | 'feeding' | 'transportation' | 'other';
+    amount: number;
+    paymentMethod: 'cash' | 'card' | 'bank_transfer' | 'mobile_money' | 'cheque';
+    transactionId?: string;
+    paymentDate: string;
+    notes?: string;
+  }[] | null;
 
   // Metadata
   createdAt: string;
@@ -141,17 +159,35 @@ export interface StudentFirestoreDoc {
   transferCertificateUrl?: string | null;
 
   // Status and Enrollment
-  status: 'active' | 'inactive' | 'graduated' | 'transferred' | 'suspended';
+  status: 'active' | 'inactive' | 'graduated' | 'transferred' | 'suspended' | 'draft';
   enrollmentDate: Timestamp;
   withdrawalDate?: Timestamp | null;
   withdrawalReason?: string | null;
+
+  // Fee Payment Information (Legacy - kept for backward compatibility)
+  admissionFeePaid?: boolean;
+  admissionFeeAmount?: number | null;
+  admissionFeePaymentDate?: string | null;
+  admissionFeePaymentMethod?: string | null;
+  admissionFeeTransactionId?: string | null;
+
+  // Initial Fee Payments (collected during registration)
+  initialFeePayments?: {
+    feeType: 'admission' | 'school_fees' | 'books' | 'uniform' | 'feeding' | 'transportation' | 'other';
+    amount: number;
+    paymentMethod: 'cash' | 'card' | 'bank_transfer' | 'mobile_money' | 'cheque';
+    transactionId?: string;
+    paymentDate: string;
+    notes?: string;
+  }[] | null;
 
   // Metadata
   createdAt: Timestamp;
   updatedAt: Timestamp;
   createdBy?: string | null;
   notes?: string | null;
-  schoolId: string;
+  organizationId: string;
+  schoolId?: string; // Deprecated, for migration
 }
 
 // Zod schemas for validation
@@ -288,7 +324,7 @@ export const StudentRegistrationSchema = z.object({
   // Secondary Guardian (Optional)
   secondaryGuardianName: z.string().optional().nullable(),
   secondaryGuardianRelationship: z.enum(['parent', 'guardian', 'other']).optional(),
-  secondaryGuardianEmail: z.string().email().optional().nullable(),
+  secondaryGuardianEmail: z.string().email('Invalid email').optional().or(z.literal('')).nullable(),
   secondaryGuardianPhone: z.string().optional().nullable(),
 
   // Medical Information
@@ -297,6 +333,15 @@ export const StudentRegistrationSchema = z.object({
   chronicConditions: z.string().optional().nullable(),
   medicationsRequired: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+
+  // Fee Payments (Multiple - Optional)
+  feePayments: z.array(z.object({
+    feeType: z.enum(['admission', 'school_fees', 'books', 'uniform', 'feeding', 'transportation', 'other']),
+    amount: z.number().min(0),
+    paymentMethod: z.enum(['cash', 'card', 'bank_transfer', 'mobile_money', 'cheque']),
+    transactionId: z.string().optional(),
+    notes: z.string().optional(),
+  })).optional().default([]),
 });
 
 export type StudentRegistrationData = z.infer<typeof StudentRegistrationSchema>;
@@ -305,3 +350,4 @@ export type StudentAcademicDetailsData = z.infer<typeof StudentAcademicDetailsSc
 export type StudentContactInfoData = z.infer<typeof StudentContactInfoSchema>;
 export type PrimaryGuardianData = z.infer<typeof PrimaryGuardianSchema>;
 export type StudentMedicalInfoData = z.infer<typeof StudentMedicalInfoSchema>;
+

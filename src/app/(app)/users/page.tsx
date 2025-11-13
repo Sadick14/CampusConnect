@@ -2,7 +2,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PageHeader } from "@/components/common/page-header";
+import { PageHeader } from '@/components/common/page-header';
+import { ListPageSkeleton } from '@/components/common/page-skeletons';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -39,7 +40,7 @@ export default function UsersPage() {
       email: "",
       password: "", // Initialize password
       role: "student",
-      schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined,
+      organizationId: currentUser?.role === 'school_admin' ? currentUser.currentOrganizationId : undefined,
     },
   });
 
@@ -59,8 +60,8 @@ export default function UsersPage() {
                 id: editingUser.id,
                 name: editingUser.name,
                 email: editingUser.email || '',
-                role: editingUser.role as 'student' | 'teacher' | 'school_admin',
-                schoolId: editingUser.schoolId,
+                role: editingUser.role as 'student' | 'teacher' | 'organization_owner' | 'superadmin',
+                organizationId: editingUser.currentOrganizationId,
                 password: '', // Don't pre-fill password for editing
             });
         } else {
@@ -69,12 +70,12 @@ export default function UsersPage() {
                 email: "",
                 password: "",
                 role: "student", // Default role for new user
-                schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined,
+                organizationId: currentUser?.role === 'school_admin' ? currentUser.currentOrganizationId : undefined,
             });
         }
     } else {
          // Optional: Clear form state completely when dialog closes
-         form.reset({ name: "", email: "", password: "", role: "student", schoolId: currentUser?.role === 'school_admin' ? currentUser.schoolId : undefined });
+         form.reset({ name: "", email: "", password: "", role: "student", organizationId: currentUser?.role === 'school_admin' ? currentUser.currentOrganizationId : undefined });
     }
     setShowPassword(false); // Reset password visibility on dialog state change
   }, [editingUser, isEditDialogOpen, form, currentUser]);
@@ -83,7 +84,7 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
-      const fetchedUsers = await getUsers(currentUser?.role === 'school_admin' ? currentUser.schoolId || undefined : undefined);
+      const fetchedUsers = await getUsers(currentUser?.role === 'school_admin' ? currentUser.currentOrganizationId || undefined : undefined);
       setUsers(fetchedUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -125,7 +126,7 @@ export default function UsersPage() {
         if (!editingUser.id) throw new Error("Editing user ID is missing.");
         // Don't send password for updates
         const { password, ...updateData } = values;
-        resultUser = await adminUpdateUserProfile(editingUser.id, updateData, currentUser.role, currentUser.schoolId);
+  resultUser = await adminUpdateUserProfile(editingUser.id, updateData, currentUser.role, currentUser.currentOrganizationId);
         toast({ title: "User Updated", description: `${resultUser.name}'s profile has been updated.` });
         fetchUsers(); // Refresh list
         handleDialogClose(false); // Close dialog on success
@@ -137,11 +138,11 @@ export default function UsersPage() {
             return;
         }
         const dataToSend = { ...values };
-        if (currentUser.role === 'school_admin' && !dataToSend.schoolId) {
-          dataToSend.schoolId = currentUser.schoolId; // Ensure school admin assigns to their school
+        if (currentUser.role === 'school_admin' && !dataToSend.organizationId) {
+          dataToSend.organizationId = currentUser.currentOrganizationId; // Ensure school admin assigns to their organization
         }
         // Pass the full data including password to adminCreateUserProfile
-        resultUser = await adminCreateUserProfile(dataToSend, currentUser.role, currentUser.schoolId);
+        resultUser = await adminCreateUserProfile(dataToSend, currentUser.role, currentUser.currentOrganizationId);
         toast({
           title: "User Created Successfully!",
           description: `Auth account and Firestore profile created for ${resultUser.name}.`,
@@ -166,11 +167,7 @@ export default function UsersPage() {
 
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
+    return <ListPageSkeleton />;
   }
 
   if (!currentUser || (currentUser.role !== 'superadmin' && currentUser.role !== 'school_admin' && currentUser.role !== 'organization_owner')) {
@@ -195,7 +192,7 @@ export default function UsersPage() {
     <div className="container mx-auto px-4">
       <PageHeader
         title="User Management"
-        description={currentUser.role === 'superadmin' ? "Administer all user accounts." : `Manage users for ${currentUser.schoolName || 'your school'}.`}
+  description={currentUser.role === 'superadmin' ? "Administer all user accounts." : `Manage users for ${currentUser.currentOrganizationId || 'your organization'}.`}
         actions={
           <Button onClick={handleAddNewClick}>
             <UserPlus className="mr-2 h-4 w-4" /> Add New User
@@ -327,18 +324,17 @@ export default function UsersPage() {
                {currentUser.role === 'superadmin' && (
                  <FormField
                    control={form.control}
-                   name="schoolId"
+                   name="organizationId"
                    render={({ field }) => (
                      <FormItem className="grid grid-cols-4 items-center gap-4">
-                       <FormLabel htmlFor="schoolId" className="text-right">School ID</FormLabel>
+                       <FormLabel htmlFor="organizationId" className="text-right">Organization ID</FormLabel>
                        <FormControl className="col-span-3">
                            <Input
-                              id="schoolId"
+                              id="organizationId"
                               {...field}
-                              placeholder="Enter School ID (optional)"
-                              // School ID is optional for all roles in this form
-                              value={field.value ?? ''} // Handle null value for input
-                              onChange={(e) => field.onChange(e.target.value || null)} // Send null if empty
+                              placeholder="Enter Organization ID (optional)"
+                              value={field.value ?? ''}
+                              onChange={(e) => field.onChange(e.target.value || null)}
                            />
                        </FormControl>
                        <FormMessage className="col-start-2 col-span-3" />
@@ -351,14 +347,14 @@ export default function UsersPage() {
                   <FormItem className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="schoolId-display" className="text-right">School</Label>
                     <Input
-                      id="schoolId-display"
-                      value={currentUser.schoolName ? `${currentUser.schoolName} (${currentUser.schoolId})` : currentUser.schoolId || 'N/A'}
+                      id="organizationId-display"
+                      value={currentUser.currentOrganizationId ? `${currentUser.currentOrganizationId}` : 'N/A'}
                       className="col-span-3 bg-muted"
                       readOnly
                       disabled
                     />
-                     {/* Hidden input to ensure schoolId is submitted correctly for school admins */}
-                     <input type="hidden" {...form.register("schoolId")} value={currentUser.schoolId || ''} />
+                     {/* Hidden input to ensure organizationId is submitted correctly for organization admins */}
+                     <input type="hidden" {...form.register("organizationId")} value={currentUser.currentOrganizationId || ''} />
                    </FormItem>
                )}
 
@@ -380,7 +376,7 @@ export default function UsersPage() {
       {users.length === 0 && !isLoading ? (
         <Card className="mt-6">
           <CardContent className="pt-6 text-center text-muted-foreground">
-            No users found{currentUser?.role === 'school_admin' ? ` for ${currentUser.schoolName}` : ''}.
+            No users found{currentUser?.role === 'school_admin' ? ` for ${currentUser.currentOrganizationId}` : ''}.
           </CardContent>
         </Card>
       ) : (
@@ -388,7 +384,7 @@ export default function UsersPage() {
           <CardHeader>
             <CardTitle>User List</CardTitle>
             <CardDescription>
-              {currentUser?.role === 'superadmin' ? 'All users in the system.' : `Users associated with ${currentUser.schoolName || 'your school'}.`}
+              {currentUser?.role === 'superadmin' ? 'All users in the system.' : `Users associated with ${currentUser.currentOrganizationId || 'your organization'}.`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -398,7 +394,7 @@ export default function UsersPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>School</TableHead>
+                  <TableHead>Organization</TableHead>
                   <TableHead>User ID (Auth UID)</TableHead>
                   <TableHead>Created At</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -410,7 +406,7 @@ export default function UsersPage() {
                     <TableCell className="font-medium">{user.name}</TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>{user.role?.charAt(0).toUpperCase() + user.role?.slice(1).replace('_', ' ')}</TableCell>
-                    <TableCell>{user.schoolName || (user.role === 'superadmin' ? 'N/A' : (user.schoolId ? `ID: ${user.schoolId}` : 'N/A'))}</TableCell>
+                    <TableCell>{user.currentOrganizationId || (user.role === 'superadmin' ? 'N/A' : (user.organizationIds && user.organizationIds.length ? `ID: ${user.organizationIds[0]}` : 'N/A'))}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {user.id}
                       {/* Removed copy button for UID */}

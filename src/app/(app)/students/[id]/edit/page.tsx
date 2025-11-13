@@ -19,6 +19,7 @@ import {
 import { Loader2, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getStudent, updateStudent, type Student } from '@/services/student';
+import { FormSkeleton } from '@/components/common/page-skeletons';
 
 export default function StudentEditPage() {
   const params = useParams();
@@ -97,11 +98,7 @@ export default function StudentEditPage() {
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
+    return <FormSkeleton fields={8} />;
   }
 
   if (!student || !formData) {

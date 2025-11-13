@@ -7,6 +7,7 @@ import {
   doc,
   getDocs,
   getDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -86,52 +87,68 @@ export async function getFeeRecord(recordId: string): Promise<StudentFeeRecord |
 /**
  * Get all fee records for a student
  */
-export async function getStudentFeeRecords(schoolId: string, studentId: string): Promise<StudentFeeRecord[]> {
+export async function getStudentFeeRecords(organizationId: string, studentId: string): Promise<StudentFeeRecord[]> {
   const db = getDb();
   const q = query(
     collection(db, COLLECTION_PATHS.fees),
-    where('schoolId', '==', schoolId),
-    where('studentId', '==', studentId),
-    orderBy('dueDate', 'desc')
+    where('organizationId', '==', organizationId),
+    where('studentId', '==', studentId)
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
+  let records = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
   })) as StudentFeeRecord[];
+  
+  // Sort client-side by dueDate descending
+  records.sort((a, b) => {
+    const dateA = a.dueDate ? (a.dueDate as any).toDate ? (a.dueDate as any).toDate().getTime() : new Date(a.dueDate as any).getTime() : 0;
+    const dateB = b.dueDate ? (b.dueDate as any).toDate ? (b.dueDate as any).toDate().getTime() : new Date(b.dueDate as any).getTime() : 0;
+    return dateB - dateA;
+  });
+  
+  return records;
 }
 
 /**
  * Get all fee records for a class
  */
-export async function getClassFeeRecords(schoolId: string, className: string): Promise<StudentFeeRecord[]> {
+export async function getClassFeeRecords(organizationId: string, className: string): Promise<StudentFeeRecord[]> {
   const db = getDb();
   const q = query(
     collection(db, COLLECTION_PATHS.fees),
-    where('schoolId', '==', schoolId),
-    where('className', '==', className),
-    orderBy('studentName', 'asc')
+    where('organizationId', '==', organizationId),
+    where('className', '==', className)
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
+  let records = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
   })) as StudentFeeRecord[];
+  
+  // Sort client-side by studentName ascending
+  records.sort((a, b) => {
+    const nameA = a.studentName || '';
+    const nameB = b.studentName || '';
+    return nameA.localeCompare(nameB);
+  });
+  
+  return records;
 }
 
 /**
  * Get all fee records by status
  */
 export async function getFeeRecordsByStatus(
-  schoolId: string,
+  organizationId: string,
   status: 'pending' | 'partial' | 'paid' | 'overdue' | 'exempted'
 ): Promise<StudentFeeRecord[]> {
   const db = getDb();
   const q = query(
     collection(db, COLLECTION_PATHS.fees),
-    where('schoolId', '==', schoolId),
+    where('organizationId', '==', organizationId),
     where('paymentStatus', '==', status),
     orderBy('dueDate', 'asc')
   );
@@ -147,7 +164,7 @@ export async function getFeeRecordsByStatus(
  * Get all fee records for a school
  */
 export async function getSchoolFeeRecords(
-  schoolId: string,
+  organizationId: string,
   filters?: {
     feeType?: string;
     paymentStatus?: string;
@@ -156,7 +173,7 @@ export async function getSchoolFeeRecords(
   }
 ): Promise<StudentFeeRecord[]> {
   const db = getDb();
-  const constraints: QueryConstraint[] = [where('schoolId', '==', schoolId)];
+  const constraints: QueryConstraint[] = [where('organizationId', '==', organizationId)];
 
   if (filters?.feeType) constraints.push(where('feeType', '==', filters.feeType));
   if (filters?.paymentStatus) constraints.push(where('paymentStatus', '==', filters.paymentStatus));
@@ -264,11 +281,11 @@ export async function getPayment(paymentId: string): Promise<PaymentRecord | nul
 /**
  * Get all payments for a student
  */
-export async function getStudentPayments(schoolId: string, studentId: string): Promise<PaymentRecord[]> {
+export async function getStudentPayments(organizationId: string, studentId: string): Promise<PaymentRecord[]> {
   const db = getDb();
   const q = query(
     collection(db, COLLECTION_PATHS.payments),
-    where('schoolId', '==', schoolId),
+    where('organizationId', '==', organizationId),
     where('studentId', '==', studentId),
     orderBy('paymentDate', 'desc')
   );
@@ -284,7 +301,7 @@ export async function getStudentPayments(schoolId: string, studentId: string): P
  * Get all payments for a school with optional filters
  */
 export async function getSchoolPayments(
-  schoolId: string,
+  organizationId: string,
   filters?: {
     paymentMethod?: string;
     status?: 'pending' | 'confirmed' | 'rejected';
@@ -293,7 +310,7 @@ export async function getSchoolPayments(
   }
 ): Promise<PaymentRecord[]> {
   const db = getDb();
-  const constraints: QueryConstraint[] = [where('schoolId', '==', schoolId)];
+  const constraints: QueryConstraint[] = [where('organizationId', '==', organizationId)];
 
   if (filters?.paymentMethod) constraints.push(where('paymentMethod', '==', filters.paymentMethod));
   if (filters?.status) constraints.push(where('status', '==', filters.status));
@@ -397,7 +414,8 @@ export async function createFeeExemption(
   const docRef = await addDoc(collection(db, COLLECTION_PATHS.exemptions), dataToSave);
 
   // Update fee record status
-  const feeRecords = await getStudentFeeRecords(exemptionData.schoolId, exemptionData.studentId);
+  const orgId = (exemptionData as any).organizationId || exemptionData.schoolId;
+  const feeRecords = await getStudentFeeRecords(orgId, exemptionData.studentId);
   const relevantFees = feeRecords.filter(f => f.feeType === exemptionData.feeType);
 
   const batch = writeBatch(db);
@@ -418,11 +436,11 @@ export async function createFeeExemption(
 /**
  * Get exemptions for a student
  */
-export async function getStudentExemptions(schoolId: string, studentId: string): Promise<FeeExemption[]> {
+export async function getStudentExemptions(organizationId: string, studentId: string): Promise<FeeExemption[]> {
   const db = getDb();
   const q = query(
     collection(db, COLLECTION_PATHS.exemptions),
-    where('schoolId', '==', schoolId),
+    where('organizationId', '==', organizationId),
     where('studentId', '==', studentId)
   );
 
@@ -436,11 +454,11 @@ export async function getStudentExemptions(schoolId: string, studentId: string):
 /**
  * Get all exemptions for a school
  */
-export async function getSchoolExemptions(schoolId: string): Promise<FeeExemption[]> {
+export async function getSchoolExemptions(organizationId: string): Promise<FeeExemption[]> {
   const db = getDb();
   const q = query(
     collection(db, COLLECTION_PATHS.exemptions),
-    where('schoolId', '==', schoolId),
+    where('organizationId', '==', organizationId),
     orderBy('startDate', 'desc')
   );
 
@@ -454,12 +472,12 @@ export async function getSchoolExemptions(schoolId: string): Promise<FeeExemptio
 /**
  * Delete exemption
  */
-export async function deleteExemption(exemptionId: string, schoolId: string, studentId: string): Promise<void> {
+export async function deleteExemption(exemptionId: string, organizationId: string, studentId: string): Promise<void> {
   const db = getDb();
   await deleteDoc(doc(db, COLLECTION_PATHS.exemptions, exemptionId));
 
   // Reset exempted fees back to pending
-  const feeRecords = await getStudentFeeRecords(schoolId, studentId);
+  const feeRecords = await getStudentFeeRecords(organizationId, studentId);
   const batch = writeBatch(db);
   for (const fee of feeRecords.filter(f => f.paymentStatus === 'exempted')) {
     batch.update(doc(db, COLLECTION_PATHS.fees, fee.id!), {
@@ -498,11 +516,11 @@ export async function createFeeType(feeTypeData: FeeTypeInput): Promise<FeeType>
 /**
  * Get all fee types for a school
  */
-export async function getSchoolFeeTypes(schoolId: string): Promise<FeeType[]> {
+export async function getSchoolFeeTypes(organizationId: string): Promise<FeeType[]> {
   const db = getDb();
   const q = query(
     collection(db, COLLECTION_PATHS.feeTypes),
-    where('schoolId', '==', schoolId),
+    where('organizationId', '==', organizationId),
     orderBy('displayName', 'asc')
   );
 
@@ -578,7 +596,7 @@ export async function getClassFeeStructure(classId: string): Promise<ClassFeeStr
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
-  })) as ClassFeeStructure[];
+  })) as unknown as ClassFeeStructure[];
 }
 
 /**
@@ -589,11 +607,11 @@ export async function getClassFeeStructure(classId: string): Promise<ClassFeeStr
  * Calculate fee collection summary for a school
  */
 export async function calculateFeeSummary(
-  schoolId: string,
+  organizationId: string,
   academicYear: string
 ): Promise<FeeSummary> {
   const db = getDb();
-  const allFees = await getSchoolFeeRecords(schoolId, { academicYear });
+  const allFees = await getSchoolFeeRecords(organizationId, { academicYear });
 
   let totalExpected = 0;
   let totalPaid = 0;
@@ -648,7 +666,7 @@ export async function calculateFeeSummary(
   }));
 
   return {
-    schoolId,
+    schoolId: organizationId,
     academicYear,
     totalFeesExpected: totalExpected,
     totalFeesPaid: totalPaid,
@@ -663,9 +681,9 @@ export async function calculateFeeSummary(
 /**
  * Get overdue fees for a school
  */
-export async function getOverdueFees(schoolId: string, daysOverdue: number = 0): Promise<StudentFeeRecord[]> {
+export async function getOverdueFees(organizationId: string, daysOverdue: number = 0): Promise<StudentFeeRecord[]> {
   const db = getDb();
-  const overdueFees = await getFeeRecordsByStatus(schoolId, 'overdue');
+  const overdueFees = await getFeeRecordsByStatus(organizationId, 'overdue');
 
   const now = new Date();
   const cutoffDate = new Date(now.getTime() - daysOverdue * 24 * 60 * 60 * 1000);
@@ -680,10 +698,10 @@ export async function getOverdueFees(schoolId: string, daysOverdue: number = 0):
  * Get fee collection statistics by class
  */
 export async function getFeeCollectionByClass(
-  schoolId: string,
+  organizationId: string,
   academicYear: string
 ): Promise<Record<string, { total: number; collected: number; percentage: number }>> {
-  const classRecords = await getSchoolFeeRecords(schoolId, { academicYear });
+  const classRecords = await getSchoolFeeRecords(organizationId, { academicYear });
 
   const classStats: Record<string, { total: number; collected: number }> = {};
 
@@ -711,17 +729,17 @@ export async function getFeeCollectionByClass(
  * Get student's outstanding balance
  */
 export async function getStudentOutstandingBalance(
-  schoolId: string,
+  organizationId: string,
   studentId: string
 ): Promise<number> {
-  const fees = await getStudentFeeRecords(schoolId, studentId);
+  const fees = await getStudentFeeRecords(organizationId, studentId);
   return fees.reduce((total, fee) => total + fee.pendingAmount, 0);
 }
 
 /**
  * Get total fees collected today
  */
-export async function getTodayCollections(schoolId: string): Promise<number> {
+export async function getTodayCollections(organizationId: string): Promise<number> {
   const db = getDb();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -729,10 +747,170 @@ export async function getTodayCollections(schoolId: string): Promise<number> {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const payments = await getSchoolPayments(schoolId, {
+  const payments = await getSchoolPayments(organizationId, {
     startDate: Timestamp.fromDate(today),
     endDate: Timestamp.fromDate(tomorrow),
   });
 
   return payments.reduce((total, payment) => (payment.status === 'confirmed' ? total + payment.amount : total), 0);
 }
+
+/**
+ * Record bulk feeding fees (daily/weekly collection)
+ */
+export async function recordBulkFeedingFees(data: {
+  organizationId: string;
+  classId: string;
+  date: string;
+  type: 'daily' | 'weekly';
+  amount: number;
+  students: Array<{ studentId: string; studentName: string }>;
+}): Promise<void> {
+  const db = getDb();
+  const batch = writeBatch(db);
+  const paymentsRef = collection(db, COLLECTION_PATHS.payments);
+
+  for (const student of data.students) {
+    const paymentRef = doc(paymentsRef);
+    batch.set(paymentRef, {
+      organizationId: data.organizationId,
+      studentId: student.studentId,
+      studentName: student.studentName,
+      feeType: 'feeding_fees',
+      amount: data.amount,
+      paymentDate: Timestamp.fromDate(new Date(data.date)),
+      paymentMethod: 'cash',
+      status: 'confirmed',
+      collectionType: data.type,
+      notes: `${data.type.charAt(0).toUpperCase() + data.type.slice(1)} feeding fee`,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  }
+
+  await batch.commit();
+}
+
+/**
+ * Record installment payment for any fee type
+ */
+export async function recordInstallmentPayment(data: {
+  organizationId: string;
+  studentId: string;
+  studentName: string;
+  feeType: string;
+  amount: number;
+  paymentDate: string;
+  notes?: string;
+}): Promise<void> {
+  const db = getDb();
+  const paymentRef = doc(collection(db, COLLECTION_PATHS.payments));
+
+  await setDoc(paymentRef, {
+    organizationId: data.organizationId,
+    studentId: data.studentId,
+    studentName: data.studentName,
+    feeType: data.feeType,
+    amount: data.amount,
+    paymentDate: Timestamp.fromDate(new Date(data.paymentDate)),
+    paymentMethod: 'cash',
+    status: 'confirmed',
+    isInstallment: true,
+    notes: data.notes || 'Installment payment',
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+}
+
+/**
+ * Get student's fee balance for a specific fee type
+ */
+export async function getStudentFeeBalance(
+  organizationId: string,
+  studentId: string,
+  feeType: string
+): Promise<number> {
+  const db = getDb();
+
+  // Get total fees charged
+  const feesQuery = query(
+    collection(db, COLLECTION_PATHS.fees),
+    where('organizationId', '==', organizationId),
+    where('studentId', '==', studentId),
+    where('feeType', '==', feeType)
+  );
+  const feesSnapshot = await getDocs(feesQuery);
+  const totalCharged = feesSnapshot.docs.reduce((sum, doc) => {
+    const data = doc.data();
+    return sum + (data.amount || 0);
+  }, 0);
+
+  // Get total payments made
+  const paymentsQuery = query(
+    collection(db, COLLECTION_PATHS.payments),
+    where('organizationId', '==', organizationId),
+    where('studentId', '==', studentId),
+    where('feeType', '==', feeType),
+    where('status', '==', 'confirmed')
+  );
+  const paymentsSnapshot = await getDocs(paymentsQuery);
+  const totalPaid = paymentsSnapshot.docs.reduce((sum, doc) => {
+    const data = doc.data();
+    return sum + (data.amount || 0);
+  }, 0);
+
+  return totalCharged - totalPaid;
+}
+
+/**
+ * Create installment plan for a student
+ */
+export async function createInstallmentPlan(data: {
+  organizationId: string;
+  studentId: string;
+  studentName: string;
+  feeType: string;
+  totalAmount: number;
+  numberOfInstallments: number;
+  startDate: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+}): Promise<void> {
+  const db = getDb();
+  const planRef = doc(collection(db, 'installment_plans'));
+
+  const installmentAmount = data.totalAmount / data.numberOfInstallments;
+  const installments = [];
+  const startDate = new Date(data.startDate);
+
+  for (let i = 0; i < data.numberOfInstallments; i++) {
+    const dueDate = new Date(startDate);
+    
+    if (data.frequency === 'weekly') {
+      dueDate.setDate(dueDate.getDate() + (i * 7));
+    } else if (data.frequency === 'biweekly') {
+      dueDate.setDate(dueDate.getDate() + (i * 14));
+    } else {
+      dueDate.setMonth(dueDate.getMonth() + i);
+    }
+
+    installments.push({
+      number: i + 1,
+      amount: installmentAmount,
+      dueDate: Timestamp.fromDate(dueDate),
+      isPaid: false,
+    });
+  }
+
+  await setDoc(planRef, {
+    organizationId: data.organizationId,
+    studentId: data.studentId,
+    studentName: data.studentName,
+    feeType: data.feeType,
+    totalAmount: data.totalAmount,
+    amountPaid: 0,
+    installments,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+}
+

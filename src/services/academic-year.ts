@@ -123,19 +123,78 @@ export async function endAcademicYear(
     promoteStudents?: boolean;
     carryOverFees?: boolean;
     archiveData?: boolean;
+    newAcademicYearId?: string;
+    newAcademicYearName?: string;
   }
-): Promise<void> {
+): Promise<{
+  promotionResult?: any;
+  carryoverResult?: any;
+  archiveId?: string;
+}> {
   const db = getDb();
   const year = await getAcademicYear(academicYearId);
   if (!year) throw new Error('Academic year not found');
+
+  const results: any = {};
+
+  // Promote students if requested
+  if (options?.promoteStudents) {
+    try {
+      const { promoteAllStudents } = await import('./promotion');
+      console.log('📚 Promoting students to next grade...');
+      const promotionResult = await promoteAllStudents(year.organizationId, academicYearId);
+      results.promotionResult = promotionResult;
+      console.log(`✅ Promoted ${promotionResult.promoted} students, Graduated ${promotionResult.graduated} students`);
+    } catch (error) {
+      console.error('Error promoting students:', error);
+      throw new Error('Failed to promote students');
+    }
+  }
+
+  // Carry over fees if requested
+  if (options?.carryOverFees && options?.newAcademicYearId && options?.newAcademicYearName) {
+    try {
+      const { carryOverUnpaidFees } = await import('./fee-carryover');
+      console.log('💰 Carrying over unpaid fees...');
+      const carryoverResult = await carryOverUnpaidFees(
+        year.organizationId,
+        academicYearId,
+        options.newAcademicYearId,
+        options.newAcademicYearName
+      );
+      results.carryoverResult = carryoverResult;
+      console.log(`✅ Carried over ${carryoverResult.feesCarriedOver} fee records (GH₵${carryoverResult.totalAmountCarriedOver.toFixed(2)})`);
+    } catch (error) {
+      console.error('Error carrying over fees:', error);
+      throw new Error('Failed to carry over fees');
+    }
+  }
+
+  // Archive data if requested
+  if (options?.archiveData) {
+    try {
+      const { archiveAcademicYear } = await import('./archive');
+      console.log('📦 Archiving academic year data...');
+      // Archive will be created in the component that has access to currentUser
+      // Return a flag to indicate archiving was requested
+      results.archiveRequested = true;
+    } catch (error) {
+      console.error('Error archiving data:', error);
+      // Continue even if archiving fails
+    }
+  }
+
+  // Update academic year status
   await updateDoc(doc(db, COLLECTION, academicYearId), {
     isCurrent: false,
     isActive: false,
+    endedAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });
-  if (options?.promoteStudents) console.log('📚 Student promotion would happen here');
-  if (options?.carryOverFees) console.log('💰 Fee carryover would happen here');
-  if (options?.archiveData) console.log('📦 Data archival would happen here');
+
+  console.log(`✅ Academic year ${year.name} ended successfully`);
+
+  return results;
 }
 
 export async function addTermToAcademicYear(

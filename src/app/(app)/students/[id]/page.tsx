@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/common/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { DetailPageSkeleton } from '@/components/common/page-skeletons';
 import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
@@ -108,20 +109,8 @@ export default function StudentDetailPage() {
     }
   };
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
+  if (authLoading || loading) {
+    return <DetailPageSkeleton />;
   }
 
   if (!student) {

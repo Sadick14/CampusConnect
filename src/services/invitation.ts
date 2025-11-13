@@ -124,7 +124,7 @@ export async function getAllInvitations(status?: 'pending' | 'accepted' | 'expir
 /**
  * Accept an invitation and link to created school
  */
-export async function acceptInvitation(inviteToken: string, schoolId: string): Promise<void> {
+export async function acceptInvitation(inviteToken: string, organizationId: string): Promise<void> {
   const invitation = await getInvitationByToken(inviteToken);
   if (!invitation) {
     throw new Error('Invalid or expired invitation');
@@ -136,7 +136,7 @@ export async function acceptInvitation(inviteToken: string, schoolId: string): P
   await updateDoc(docRef, {
     status: 'accepted',
     acceptedAt: Timestamp.now(),
-    schoolId,
+    organizationId,
   });
 }
 

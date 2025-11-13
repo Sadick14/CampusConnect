@@ -29,33 +29,34 @@ export default function useSuperAdminStats() {
     const db = getDb();
 
     // Collections we care about
-    const schoolsRef = collection(db, 'schools');
+    const organizationsRef = collection(db, 'organizations');
     const usersRef = collection(db, 'users');
     const paymentsRef = collection(db, 'payments');
     const subscriptionsRef = collection(db, 'subscriptions');
 
-    let schoolsSnap: QuerySnapshot<DocumentData> | null = null;
+    let organizationsSnap: QuerySnapshot<DocumentData> | null = null;
     let usersSnap: QuerySnapshot<DocumentData> | null = null;
     let paymentsSnap: QuerySnapshot<DocumentData> | null = null;
     let subscriptionsSnap: QuerySnapshot<DocumentData> | null = null;
 
     // Helpers to recompute derived metrics from the latest snapshots
     function recompute() {
-      if (!schoolsSnap || !usersSnap || !paymentsSnap || !subscriptionsSnap) return;
+      if (!organizationsSnap || !usersSnap || !paymentsSnap || !subscriptionsSnap) return;
 
       try {
         // === System Stats ===
-        const totalSchools = schoolsSnap.size;
+        const totalSchools = organizationsSnap.size;
         let activeSchools = 0;
         let inactiveSchools = 0;
         let suspendedSchools = 0;
 
         const schoolDataMap = new Map<string, any>();
-        schoolsSnap.forEach((s) => {
+        organizationsSnap.forEach((s) => {
           const d = s.data();
           schoolDataMap.set(s.id, d);
-          if (d.subscriptionStatus === 'active' || d.subscriptionStatus === 'trial') activeSchools++;
-          else if (d.subscriptionStatus === 'suspended') suspendedSchools++;
+          const status = d.subscriptionStatus || d.status || 'trial';
+          if (status === 'active') activeSchools++;
+          else if (status === 'suspended') suspendedSchools++;
           else inactiveSchools++;
         });
 
@@ -70,12 +71,12 @@ export default function useSuperAdminStats() {
           const d = u.data();
           if (d.role === 'student') totalStudents++;
           else if (d.role === 'teacher') totalTeachers++;
-          else if (d.role === 'school_admin' || d.role === 'organization_owner') totalAdmins++;
+          else if (d.role === 'school_admin') totalAdmins++;
 
-          const schoolId = d.schoolId || 'unknown';
-          const arr = usersBySchool.get(schoolId) || [];
+          const organizationId = d.currentOrganizationId || d.organizationId || 'unknown';
+          const arr = usersBySchool.get(organizationId) || [];
           arr.push({ id: u.id, ...d });
-          usersBySchool.set(schoolId, arr);
+          usersBySchool.set(organizationId, arr);
         });
 
         // Payments
@@ -95,7 +96,7 @@ export default function useSuperAdminStats() {
 
           if (status === 'approved') {
             totalRevenue += amount;
-            const paidAt = d.reviewedAt?.toDate?.() || d.createdAt?.toDate?.();
+            const paidAt = d.paidAt?.toDate?.() || d.createdAt?.toDate?.();
             if (paidAt && paidAt.getMonth() === currentMonth && paidAt.getFullYear() === currentYear) {
               monthlyRevenue += amount;
             }
@@ -103,15 +104,15 @@ export default function useSuperAdminStats() {
             pendingPayments++;
           }
 
-          const schoolId = d.schoolId || p.id;
-          const schoolName = d.schoolName || schoolDataMap.get(schoolId)?.name || 'Unknown';
-          const existing = bySchoolMap.get(schoolId) || { schoolName, amount: 0 };
+          const organizationId = d.organizationId || p.id;
+          const schoolName = d.schoolName || schoolDataMap.get(organizationId)?.name || 'Unknown';
+          const existing = bySchoolMap.get(organizationId) || { schoolName, amount: 0 };
           existing.amount += amount;
-          bySchoolMap.set(schoolId, existing);
+          bySchoolMap.set(organizationId, existing);
         });
 
         // Active academic sessions
-        const activeSessions = subscriptionsSnap.docs.filter(s => s.data()?.subscriptionStatus === 'active').length;
+        const activeSessions = subscriptionsSnap.docs.filter(s => s.data()?.status === 'active').length;
 
         const computedSystemStats: SystemStats = {
           totalSchools,
@@ -142,7 +143,7 @@ export default function useSuperAdminStats() {
         paymentsSnap.forEach((p) => {
           const d = p.data();
           const amount = d.amount || 0;
-          const paymentDate = d.reviewedAt?.toDate?.() || d.createdAt?.toDate?.() || new Date();
+          const paymentDate = d.paidAt?.toDate?.() || d.createdAt?.toDate?.() || new Date();
 
           if (paymentDate >= today) daily += amount;
           if (paymentDate >= weekAgo) weekly += amount;
@@ -151,8 +152,8 @@ export default function useSuperAdminStats() {
           if (paymentDate >= yearAgo) yearly += amount;
         });
 
-        const bySchoolArr = Array.from(bySchoolMap.entries()).map(([schoolId, d]) => ({
-          schoolId,
+        const bySchoolArr = Array.from(bySchoolMap.entries()).map(([organizationId, d]) => ({
+          organizationId,
           schoolName: d.schoolName,
           amount: d.amount,
         })).sort((a, b) => b.amount - a.amount);
@@ -168,7 +169,7 @@ export default function useSuperAdminStats() {
 
         // === School activities ===
         const activities: SchoolActivity[] = [];
-        schoolsSnap.forEach((s) => {
+        organizationsSnap.forEach((s) => {
           const sdata = s.data();
           const users = usersBySchool.get(s.id) || [];
           let studentCount = 0;
@@ -186,13 +187,13 @@ export default function useSuperAdminStats() {
             }
           });
 
-          const schoolPayments = paymentsSnap!.docs.filter(p => (p.data().schoolId || '') === s.id && p.data().status === 'approved');
+          const schoolPayments = paymentsSnap!.docs.filter(p => (p.data().organizationId || '') === s.id && p.data().status === 'approved');
           let schoolRevenue = 0;
           schoolPayments.forEach(sp => { schoolRevenue += sp.data().amount || 0; });
 
           activities.push({
             id: s.id,
-            schoolId: s.id,
+            organizationId: s.id,
             name: sdata.name || 'Unknown',
             schoolName: sdata.name || 'Unknown',
             lastActivity: sdata.lastActivityAt?.toDate?.()?.toISOString() || null,
@@ -223,13 +224,13 @@ export default function useSuperAdminStats() {
     }
 
     // Subscribe
-    const unsubSchools = onSnapshot(schoolsRef, (snap) => { schoolsSnap = snap; recompute(); });
+    const unsubOrganizations = onSnapshot(organizationsRef, (snap) => { organizationsSnap = snap; recompute(); });
     const unsubUsers = onSnapshot(usersRef, (snap) => { usersSnap = snap; recompute(); });
     const unsubPayments = onSnapshot(paymentsRef, (snap) => { paymentsSnap = snap; recompute(); });
     const unsubSubscriptions = onSnapshot(subscriptionsRef, (snap) => { subscriptionsSnap = snap; recompute(); });
 
     return () => {
-      try { unsubSchools(); } catch {}
+      try { unsubOrganizations(); } catch {}
       try { unsubUsers(); } catch {}
       try { unsubPayments(); } catch {}
       try { unsubSubscriptions(); } catch {}

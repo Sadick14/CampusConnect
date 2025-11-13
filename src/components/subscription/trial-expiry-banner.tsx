@@ -25,7 +25,7 @@ export function TrialExpiryBanner() {
       }
 
       try {
-        const sub = await getSubscription(currentUser.schoolId);
+        const sub = await getSubscription(currentUser.currentOrganizationId);
         setSubscription(sub);
 
         if (sub) {

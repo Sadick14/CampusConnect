@@ -80,7 +80,7 @@ export default function PaymentRequiredPage() {
   };
 
   const handleProceedToPayment = async () => {
-    if (!selectedPlan || !currentUser?.schoolId) {
+    if (!selectedPlan || !currentUser?.currentOrganizationId) {
       toast({
         title: "Selection Required",
         description: "Please select a payment plan to continue.",
@@ -92,7 +92,7 @@ export default function PaymentRequiredPage() {
     setLoading(true);
     try {
       // Set school to pending payment status
-      await setSchoolPendingPayment(currentUser.schoolId);
+      await setSchoolPendingPayment(currentUser.currentOrganizationId);
       
       // Show payment instructions
       toast({
@@ -132,7 +132,7 @@ export default function PaymentRequiredPage() {
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Account Access Suspended</h1>
           <p className="text-gray-600 mt-2 max-w-2xl mx-auto">
-            Your {currentUser.schoolName} account trial has expired. Choose a subscription plan below to reactivate your account immediately.
+            Your organization account trial has expired. Choose a subscription plan below to reactivate your account immediately.
           </p>
         </div>
 

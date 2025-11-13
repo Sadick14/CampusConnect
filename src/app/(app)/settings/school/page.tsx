@@ -48,14 +48,14 @@ export default function SchoolSettingsPage() {
 
   useEffect(() => {
     const fetchSchoolData = async () => {
-      if (authLoading || !currentUser || currentUser.role !== 'school_admin' || !currentUser.schoolId) {
+      if (authLoading || !currentUser || currentUser.role !== 'school_admin' || !currentUser.currentOrganizationId) {
         if (!authLoading) setIsFetching(false); // Stop fetching if auth is loaded but user invalid
         return;
       }
 
       setIsFetching(true);
       try {
-        const data = await getSchoolById(currentUser.schoolId);
+        const data = await getSchoolById(currentUser.currentOrganizationId);
         setSchoolData(data);
         if (data) {
           form.reset({
@@ -95,12 +95,12 @@ export default function SchoolSettingsPage() {
   };
 
   async function onSubmit(values: UpdateSchoolProfileData) {
-    if (!currentUser || !currentUser.schoolId) return;
+    if (!currentUser || !currentUser.currentOrganizationId) return;
 
     setIsLoading(true);
     try {
       const updatedSchool = await updateSchoolProfile(
-        currentUser.schoolId,
+        currentUser.currentOrganizationId,
         values,
         logoFile, // Pass the selected file
         currentUser.id // Pass the admin's UID for verification

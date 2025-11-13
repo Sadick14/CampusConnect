@@ -263,7 +263,7 @@ function OnboardingContent() {
       ];
 
       await createAcademicYear({
-        schoolId: school.id,
+        organizationId: school.id,
         name: academicYearName,
         startDate: Timestamp.fromDate(new Date(academicYearStart)),
         endDate: Timestamp.fromDate(new Date(academicYearEnd)),

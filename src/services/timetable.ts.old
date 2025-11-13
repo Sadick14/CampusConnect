@@ -1,0 +1,73 @@
+/**
+ * Represents a timetable.
+ */
+export interface Timetable {
+  /**
+   * The unique identifier of the timetable.
+   */
+  id: string;
+  /**
+   * The class of the timetable.
+   */
+  class: string;
+  /**
+   * The day of the week.
+   */
+  day: string;
+  /**
+   * The period of the timetable.
+   */
+  period: string;
+  /**
+   * The subject of the timetable.
+   */
+  subject: string;
+  /**
+   * The teacher of the timetable.
+   */
+  teacher: string;
+  /**
+   * The school ID of the timetable.
+   */
+  organizationId: string;
+}
+
+/**
+ * Asynchronously retrieves a timetable by its ID.
+ *
+ * @param id The ID of the timetable to retrieve.
+ * @returns A promise that resolves to a Timetable object if found, or null if not found.
+ */
+export async function getTimetable(id: string): Promise<Timetable | null> {
+  // TODO: Implement this by calling an API.
+
+  return {
+    id: '123',
+    class: '10A',
+    day: 'Monday',
+    period: '1',
+    subject: 'Math',
+    teacher: 'John Doe',
+    organizationId: '456',
+  };
+}
+
+/**
+ * Asynchronously creates a new timetable.
+ *
+ * @param timetable The timetable to create.
+ * @returns A promise that resolves to the created Timetable object.
+ */
+export async function createTimetable(timetable: Omit<Timetable, 'id'>): Promise<Timetable> {
+  // TODO: Implement this by calling an API.
+
+  return {
+    id: '456',
+    class: timetable.class,
+    day: timetable.day,
+    period: timetable.period,
+    subject: timetable.subject,
+    teacher: timetable.teacher,
+    organizationId: timetable.organizationId,
+  };
+}

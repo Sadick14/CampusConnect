@@ -362,7 +362,7 @@ export default function PaymentManagementPage() {
               <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
                 <li>Activate the school&apos;s {selectedPayment && SUBSCRIPTION_PLANS[selectedPayment.subscriptionType].name}</li>
                 <li>Unlock their account immediately</li>
-                <li>Grant access for {selectedPayment && SUBSCRIPTION_PLANS[selectedPayment.subscriptionType].duration} days</li>
+                <li>Grant access based on their billing period</li>
                 <li>Send confirmation notification to the school</li>
               </ul>
             </AlertDescription>

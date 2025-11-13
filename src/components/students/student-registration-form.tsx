@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -33,21 +33,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import {
   StudentRegistrationSchema,
   type StudentRegistrationData,
 } from '@/schemas/student';
 import { createStudent } from '@/services/student';
+import { getSchoolClasses } from '@/services/class';
+import { getCurrentAcademicYear } from '@/services/academic-year';
+import type { SchoolClass } from '@/schemas/class';
 import { useToast } from '@/hooks/use-toast';
 
 interface StudentRegistrationFormProps {
-  schoolId: string;
+  organizationId: string;
   userId: string;
   onSuccess?: (studentId: string) => void;
 }
 
-type FormStep = 'personal' | 'academic' | 'address' | 'guardian' | 'medical' | 'review';
+type FormStep = 'personal' | 'academic' | 'address' | 'guardian' | 'medical' | 'payment' | 'review';
 
 const STEPS: { key: FormStep; title: string; description: string }[] = [
   { key: 'personal', title: 'Personal Information', description: 'Basic student details' },
@@ -55,18 +58,52 @@ const STEPS: { key: FormStep; title: string; description: string }[] = [
   { key: 'address', title: 'Address', description: 'Residential address' },
   { key: 'guardian', title: 'Guardian Details', description: 'Parent/Guardian information' },
   { key: 'medical', title: 'Medical Information', description: 'Health and medical details' },
+  { key: 'payment', title: 'Fee Payment', description: 'Admission fee (optional)' },
   { key: 'review', title: 'Review & Submit', description: 'Confirm all information' },
 ];
 
 export function StudentRegistrationForm({
-  schoolId,
+  organizationId,
   userId,
   onSuccess,
 }: StudentRegistrationFormProps) {
   const [currentStep, setCurrentStep] = useState<FormStep>('personal');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [feePayments, setFeePayments] = useState<Array<{
+    feeType: 'admission' | 'school_fees' | 'books' | 'uniform' | 'feeding' | 'transportation' | 'other';
+    amount: number;
+    paymentMethod: 'cash' | 'card' | 'bank_transfer' | 'mobile_money' | 'cheque';
+    transactionId?: string;
+    notes?: string;
+  }>>([]);
   const { toast } = useToast();
+
+  // Fetch classes on mount
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        setLoadingClasses(true);
+        const academicYear = await getCurrentAcademicYear(organizationId);
+        const classList = await getSchoolClasses(organizationId, academicYear?.year);
+        setClasses(classList);
+      } catch (error) {
+        console.error('Error fetching classes:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load classes',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoadingClasses(false);
+      }
+    };
+
+    fetchClasses();
+  }, [organizationId, toast]);
 
   const form = useForm<StudentRegistrationData>({
     resolver: zodResolver(StudentRegistrationSchema),
@@ -99,19 +136,54 @@ export function StudentRegistrationForm({
       secondaryGuardianName: '',
       secondaryGuardianEmail: '',
       secondaryGuardianPhone: '',
-      bloodGroup: '',
       allergies: '',
       chronicConditions: '',
       medicationsRequired: '',
       notes: '',
+      feePayments: [],
     },
   });
 
   const currentStepIndex = STEPS.findIndex(s => s.key === currentStep);
 
+  // Define which fields are required for each step
+  const getStepFields = (step: FormStep): (keyof StudentRegistrationData)[] => {
+    switch (step) {
+      case 'personal':
+        return ['firstName', 'lastName', 'dateOfBirth', 'gender'];
+      case 'academic':
+        return ['currentClass', 'admissionNumber', 'admissionDate'];
+      case 'address':
+        return ['street', 'city', 'state', 'postalCode', 'country'];
+      case 'guardian':
+        return ['guardianName', 'guardianRelationship', 'guardianEmail', 'guardianPhone'];
+      case 'medical':
+        return []; // No required fields in medical step
+      case 'payment':
+        return []; // Payment is optional
+      case 'review':
+        return []; // Review step doesn't have input fields
+      default:
+        return [];
+    }
+  };
+
   const handleNextStep = async () => {
     if (currentStep === 'review') {
       setShowConfirmDialog(true);
+      return;
+    }
+
+    // Validate current step fields before moving to next
+    const fieldsToValidate = getStepFields(currentStep);
+    const isStepValid = await form.trigger(fieldsToValidate);
+
+    if (!isStepValid) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please fill in all required fields before continuing.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -132,7 +204,13 @@ export function StudentRegistrationForm({
     try {
       setIsSubmitting(true);
 
-      const student = await createStudent(schoolId, data, userId);
+      // Add fee payments to the data
+      const submissionData = {
+        ...data,
+        feePayments: feePayments,
+      };
+
+      const student = await createStudent(organizationId, submissionData, userId, false);
 
       toast({
         title: 'Success!',
@@ -141,6 +219,7 @@ export function StudentRegistrationForm({
 
       form.reset();
       setCurrentStep('personal');
+      setFeePayments([]);
       setShowConfirmDialog(false);
 
       if (onSuccess) {
@@ -158,47 +237,106 @@ export function StudentRegistrationForm({
     }
   };
 
+  const handleSaveAsDraft = async () => {
+    try {
+      setIsSavingDraft(true);
+
+      // Validate minimum required fields
+      const requiredFields: (keyof StudentRegistrationData)[] = [
+        'firstName', 'lastName', 'dateOfBirth', 'gender',
+        'currentClass', 'admissionNumber', 'admissionDate'
+      ];
+      
+      const isValid = await form.trigger(requiredFields);
+      
+      if (!isValid) {
+        toast({
+          title: 'Validation Error',
+          description: 'Please fill in at least the personal and academic information to save as draft.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const data = form.getValues();
+      const submissionData = {
+        ...data,
+        feePayments: feePayments,
+      };
+      const student = await createStudent(organizationId, submissionData, userId, true);
+
+      toast({
+        title: 'Draft Saved!',
+        description: `Registration for ${data.firstName} ${data.lastName} has been saved as draft.`,
+      });
+
+      form.reset();
+      setCurrentStep('personal');
+      setFeePayments([]);
+
+      if (onSuccess) {
+        onSuccess(student.id);
+      }
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save draft',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
   return (
     <>
-      <div className="w-full max-w-4xl mx-auto">
+      <div className="w-full">
         {/* Progress Steps */}
         <div className="mb-8">
-          <div className="flex justify-between mb-4">
+          <div className="flex items-center justify-between relative">
             {STEPS.map((step, index) => (
-              <div key={step.key} className="flex flex-col items-center flex-1">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold mb-2 ${
-                    index === currentStepIndex
-                      ? 'bg-blue-600 text-white'
-                      : index < currentStepIndex
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-200 text-gray-600'
-                  }`}
-                >
-                  {index < currentStepIndex ? (
-                    <CheckCircle2 className="w-6 h-6" />
-                  ) : (
-                    index + 1
-                  )}
+              <React.Fragment key={step.key}>
+                <div className="flex flex-col items-center z-10 bg-white px-2">
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold mb-2 transition-all duration-300 ${
+                      index === currentStepIndex
+                        ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg scale-110'
+                        : index < currentStepIndex
+                        ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
+                        : 'bg-gray-200 text-gray-500'
+                    }`}
+                  >
+                    {index < currentStepIndex ? (
+                      <CheckCircle2 className="w-5 h-5" />
+                    ) : (
+                      <span className="text-sm">{index + 1}</span>
+                    )}
+                  </div>
+                  <p className={`text-xs font-medium text-center max-w-[80px] ${
+                    index === currentStepIndex ? 'text-blue-600 font-semibold' : 'text-gray-500'
+                  }`}>
+                    {step.title}
+                  </p>
                 </div>
-                <p className={`text-xs font-medium text-center ${
-                  index === currentStepIndex ? 'text-blue-600' : 'text-gray-600'
-                }`}>
-                  {step.title}
-                </p>
-              </div>
+                {index < STEPS.length - 1 && (
+                  <div className={`flex-1 h-0.5 mx-2 transition-all duration-300 ${
+                    index < currentStepIndex ? 'bg-green-500' : 'bg-gray-200'
+                  }`} style={{ marginTop: '-45px' }} />
+                )}
+              </React.Fragment>
             ))}
           </div>
         </div>
 
         {/* Form Content */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{STEPS[currentStepIndex]?.title}</CardTitle>
-            <CardDescription>{STEPS[currentStepIndex]?.description}</CardDescription>
-          </CardHeader>
+        <div className="bg-white rounded-2xl border border-gray-100">
+          <div className="p-6 border-b border-gray-100">
+            <h3 className="text-xl font-bold text-gray-900">{STEPS[currentStepIndex]?.title}</h3>
+            <p className="text-sm text-gray-600 mt-1">{STEPS[currentStepIndex]?.description}</p>
+          </div>
 
-          <CardContent>
+          <div className="p-6">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 {/* PERSONAL INFORMATION STEP */}
@@ -306,29 +444,34 @@ export function StudentRegistrationForm({
                 {/* ACADEMIC DETAILS STEP */}
                 {currentStep === 'academic' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
                         name="currentClass"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Current Class *</FormLabel>
-                            <FormControl>
-                              <Input placeholder="10-A" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="section"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Section</FormLabel>
-                            <FormControl>
-                              <Input placeholder="A" {...field} value={field.value || ''} />
-                            </FormControl>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                              disabled={loadingClasses}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder={loadingClasses ? "Loading classes..." : "Select a class"} />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {classes.map((cls) => (
+                                  <SelectItem key={cls.id} value={cls.id}>
+                                    {cls.name} {cls.section ? `- ${cls.section}` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              Select the class for this student
+                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -757,6 +900,178 @@ export function StudentRegistrationForm({
                   </div>
                 )}
 
+                {/* FEE PAYMENT STEP */}
+                {currentStep === 'payment' && (
+                  <div className="space-y-6">
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Fee payments are optional during registration. You can add multiple fee types if payments are made now, or skip and record them later.
+                      </AlertDescription>
+                    </Alert>
+
+                    {/* Add Fee Payment Form */}
+                    <div className="p-4 bg-blue-50 rounded-lg space-y-4">
+                      <h4 className="font-semibold text-sm">Add Fee Payment</h4>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-sm">Fee Type *</Label>
+                          <Select
+                            value={undefined}
+                            onValueChange={(value) => {
+                              const feeType = value as 'admission' | 'school_fees' | 'books' | 'uniform' | 'feeding' | 'transportation' | 'other';
+                              // Store temporarily
+                              (window as any).tempFeeType = feeType;
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select fee type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="admission">Admission Fee</SelectItem>
+                              <SelectItem value="school_fees">School Fees</SelectItem>
+                              <SelectItem value="books">Books/Materials</SelectItem>
+                              <SelectItem value="uniform">Uniform</SelectItem>
+                              <SelectItem value="feeding">Feeding/Cafeteria</SelectItem>
+                              <SelectItem value="transportation">Transportation</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-sm">Amount *</Label>
+                          <Input
+                            type="number"
+                            placeholder="0.00"
+                            onChange={(e) => {
+                              (window as any).tempAmount = parseFloat(e.target.value);
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-sm">Payment Method *</Label>
+                          <Select
+                            onValueChange={(value) => {
+                              (window as any).tempPaymentMethod = value;
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select method" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="card">Card</SelectItem>
+                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="mobile_money">Mobile Money</SelectItem>
+                              <SelectItem value="cheque">Cheque</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-sm">Transaction/Receipt ID</Label>
+                          <Input
+                            placeholder="Optional"
+                            onChange={(e) => {
+                              (window as any).tempTransactionId = e.target.value;
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-sm">Notes (Optional)</Label>
+                        <Textarea
+                          placeholder="Additional notes about this payment"
+                          rows={2}
+                          onChange={(e) => {
+                            (window as any).tempNotes = e.target.value;
+                          }}
+                        />
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const win = window as any;
+                          if (win.tempFeeType && win.tempAmount && win.tempPaymentMethod) {
+                            const newPayment = {
+                              feeType: win.tempFeeType,
+                              amount: win.tempAmount,
+                              paymentMethod: win.tempPaymentMethod,
+                              transactionId: win.tempTransactionId || '',
+                              notes: win.tempNotes || '',
+                            };
+                            setFeePayments([...feePayments, newPayment]);
+                            // Clear temp values
+                            delete win.tempFeeType;
+                            delete win.tempAmount;
+                            delete win.tempPaymentMethod;
+                            delete win.tempTransactionId;
+                            delete win.tempNotes;
+                            toast({
+                              title: 'Fee Added',
+                              description: 'Payment has been added to the list.',
+                            });
+                          } else {
+                            toast({
+                              title: 'Missing Fields',
+                              description: 'Please fill in fee type, amount, and payment method.',
+                              variant: 'destructive',
+                            });
+                          }
+                        }}
+                        className="w-full"
+                      >
+                        Add Payment
+                      </Button>
+                    </div>
+
+                    {/* List of Added Payments */}
+                    {feePayments.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-semibold text-sm">Payments to Record ({feePayments.length})</h4>
+                        {feePayments.map((payment, index) => (
+                          <div key={index} className="p-4 bg-white border rounded-lg flex justify-between items-start">
+                            <div className="space-y-1">
+                              <p className="font-medium capitalize">{payment.feeType.replace('_', ' ')}</p>
+                              <p className="text-sm text-gray-600">
+                                Amount: GH₵{payment.amount.toFixed(2)} • {payment.paymentMethod.replace('_', ' ')}
+                              </p>
+                              {payment.transactionId && (
+                                <p className="text-xs text-gray-500">Ref: {payment.transactionId}</p>
+                              )}
+                              {payment.notes && (
+                                <p className="text-xs text-gray-500">{payment.notes}</p>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setFeePayments(feePayments.filter((_, i) => i !== index));
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        ))}
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm font-semibold text-green-800">
+                            Total: GH₵{feePayments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* REVIEW STEP */}
                 {currentStep === 'review' && (
                   <div className="space-y-4">
@@ -811,30 +1126,65 @@ export function StudentRegistrationForm({
                           <p><span className="font-medium">Phone:</span> {form.getValues('guardianPhone')}</p>
                         </div>
                       </div>
+
+                      {/* Fee Payments Review */}
+                      {feePayments.length > 0 && (
+                        <div className="col-span-2">
+                          <h4 className="font-semibold mb-2">Fee Payments ({feePayments.length})</h4>
+                          <div className="space-y-2">
+                            {feePayments.map((payment, index) => (
+                              <div key={index} className="text-sm p-2 bg-white rounded border">
+                                <span className="font-medium capitalize">{payment.feeType.replace('_', ' ')}</span>
+                                <span className="text-gray-600"> • GH₵{payment.amount.toFixed(2)} • {payment.paymentMethod.replace('_', ' ')}</span>
+                                {payment.transactionId && <span className="text-gray-500 text-xs"> (Ref: {payment.transactionId})</span>}
+                              </div>
+                            ))}
+                            <div className="font-semibold text-green-700">
+                              Total Paid: GH₵{feePayments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {/* Navigation Buttons */}
                 <div className="flex justify-between gap-4 pt-6">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handlePreviousStep}
-                    disabled={currentStepIndex === 0}
-                  >
-                    <ChevronLeft className="mr-2 h-4 w-4" />
-                    Previous
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handlePreviousStep}
+                      disabled={currentStepIndex === 0 || isSavingDraft}
+                    >
+                      <ChevronLeft className="mr-2 h-4 w-4" />
+                      Previous
+                    </Button>
+
+                    {currentStepIndex >= 1 && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleSaveAsDraft}
+                        disabled={isSavingDraft || isSubmitting}
+                      >
+                        {isSavingDraft ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save as Draft'
+                        )}
+                      </Button>
+                    )}
+                  </div>
 
                   <Button
                     type="button"
                     onClick={handleNextStep}
-                    disabled={
-                      currentStep === 'review'
-                        ? isSubmitting
-                        : !form.formState.isValid
-                    }
+                    disabled={(isSubmitting || isSavingDraft) && currentStep === 'review'}
                   >
                     {currentStep === 'review' ? (
                       isSubmitting ? (
@@ -858,8 +1208,8 @@ export function StudentRegistrationForm({
                 </div>
               </form>
             </Form>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Confirmation Dialog */}
@@ -887,11 +1237,33 @@ export function StudentRegistrationForm({
           </div>
 
           <div className="flex justify-end gap-4">
-            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)} disabled={isSubmitting}>
               Cancel
             </Button>
             <Button
-              onClick={form.handleSubmit(onSubmit)}
+              onClick={async () => {
+                try {
+                  const isValid = await form.trigger();
+                  if (!isValid) {
+                    // Show validation errors
+                    toast({
+                      title: 'Validation Error',
+                      description: 'Please check all required fields are filled correctly.',
+                      variant: 'destructive',
+                    });
+                    setShowConfirmDialog(false);
+                    return;
+                  }
+                  await onSubmit(form.getValues());
+                } catch (error) {
+                  console.error('Confirm button error:', error);
+                  toast({
+                    title: 'Error',
+                    description: error instanceof Error ? error.message : 'Failed to register student',
+                    variant: 'destructive',
+                  });
+                }
+              }}
               disabled={isSubmitting}
             >
               {isSubmitting ? (

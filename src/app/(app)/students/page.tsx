@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { ListPageSkeleton } from '@/components/common/page-skeletons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/common/page-header';
 import { Button } from '@/components/ui/button';
@@ -192,12 +193,8 @@ export default function StudentsPage() {
   // Get unique classes
   const classes = Array.from(new Set(students.map(s => s.currentClass).filter(Boolean))).sort();
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
+  if (authLoading || loading) {
+    return <ListPageSkeleton />;
   }
 
   return (

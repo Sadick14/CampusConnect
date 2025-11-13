@@ -38,7 +38,7 @@ export interface Grade {
   /**
    * The school ID.
    */
-  schoolId: string;
+  organizationId: string;
   /**
    * The class/grade level.
    */
@@ -114,7 +114,7 @@ export async function getGrade(id: string): Promise<Grade | null> {
       id: gradeSnap.id,
       studentId: data.studentId,
       studentName: data.studentName,
-      schoolId: data.schoolId,
+      organizationId: data.organizationId,
       class: data.class,
       subject: data.subject,
       assessmentType: data.assessmentType,
@@ -172,7 +172,7 @@ export async function getStudentGrades(
         id: doc.id,
         studentId: data.studentId,
         studentName: data.studentName,
-        schoolId: data.schoolId,
+        organizationId: data.organizationId,
         class: data.class,
         subject: data.subject,
         assessmentType: data.assessmentType,
@@ -199,14 +199,14 @@ export async function getStudentGrades(
 /**
  * Asynchronously retrieves grades for a school/class.
  *
- * @param schoolId The school ID.
+ * @param organizationId The school ID.
  * @param classFilter Optional class filter.
  * @param subjectFilter Optional subject filter.
  * @param termFilter Optional term filter.
  * @returns A promise that resolves to an array of Grade objects.
  */
 export async function getGradesBySchool(
-  schoolId: string,
+  organizationId: string,
   classFilter?: string,
   subjectFilter?: string,
   termFilter?: string
@@ -217,7 +217,7 @@ export async function getGradesBySchool(
     
     let q = query(
       gradesRef,
-      where('schoolId', '==', schoolId),
+      where('organizationId', '==', organizationId),
       orderBy('date', 'desc')
     );
 
@@ -236,7 +236,7 @@ export async function getGradesBySchool(
         id: doc.id,
         studentId: data.studentId,
         studentName: data.studentName,
-        schoolId: data.schoolId,
+        organizationId: data.organizationId,
         class: data.class,
         subject: data.subject,
         assessmentType: data.assessmentType,
@@ -255,7 +255,7 @@ export async function getGradesBySchool(
 
     return grades;
   } catch (error: any) {
-    console.error(`Error fetching grades for school ${schoolId}:`, error);
+    console.error(`Error fetching grades for school ${organizationId}:`, error);
     throw new Error(`Failed to fetch grades: ${error.message}`);
   }
 }

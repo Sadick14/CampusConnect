@@ -156,7 +156,21 @@ export async function createOrganization(
       throw new Error('Failed to retrieve created organization');
     }
 
-    return firestoreToOrganization(docRef.id, createdDoc.data() as OrganizationFirestoreDoc);
+    const organization = firestoreToOrganization(docRef.id, createdDoc.data() as OrganizationFirestoreDoc);
+
+    // Auto-activate trial subscription for the first organization
+    if (!hasExistingOrgs) {
+      try {
+        const { initializeTrialSubscription } = await import('./subscription');
+        await initializeTrialSubscription(docRef.id, organizationData.name);
+        console.log(`[Organization] Trial subscription auto-activated for: ${organizationData.name}`);
+      } catch (error) {
+        console.error('[Organization] Failed to auto-activate trial subscription:', error);
+        // Don't throw - organization was created successfully
+      }
+    }
+
+    return organization;
   } catch (error) {
     console.error('Error creating organization:', error);
     throw new Error('Failed to create organization');

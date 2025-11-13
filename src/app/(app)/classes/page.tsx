@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { ListPageSkeleton } from '@/components/common/page-skeletons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -65,6 +66,7 @@ import {
   getSchoolSubjects,
   createSubject,
 } from '@/services/class';
+import { getCurrentAcademicYear } from '@/services/academic-year';
 import {
   SchoolClass,
   Subject,
@@ -84,6 +86,7 @@ import {
   Loader2,
   GraduationCap,
   UserCheck,
+  AlertCircle,
 } from 'lucide-react';
 
 const GRADE_LEVELS = [
@@ -114,20 +117,21 @@ export default function ClassesPage() {
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<SchoolClass | null>(null);
-  const [academicYear, setAcademicYear] = useState('2024/2025');
+  const [academicYear, setAcademicYear] = useState('');
 
   const createForm = useForm<SchoolClassInput>({
     resolver: classSchema,
     defaultValues: {
-      schoolId: currentUser?.schoolId || '',
+      organizationId: currentUser?.currentOrganizationId || '',
       className: '',
       gradeLevel: '',
       section: '',
-      academicYear: '2024/2025',
+      academicYear: '',
       capacity: 30,
       currentEnrollment: 0,
       subjects: [],
@@ -139,11 +143,11 @@ export default function ClassesPage() {
   const editForm = useForm<SchoolClassInput>({
     resolver: classSchema,
     defaultValues: {
-      schoolId: currentUser?.schoolId || '',
+      organizationId: currentUser?.currentOrganizationId || '',
       className: '',
       gradeLevel: '',
       section: '',
-      academicYear: '2024/2025',
+      academicYear: '',
       capacity: 30,
       currentEnrollment: 0,
       subjects: [],
@@ -152,29 +156,75 @@ export default function ClassesPage() {
     },
   });
 
+  // Load current academic year on mount
   useEffect(() => {
-    if (currentUser?.schoolId) {
+    if (currentUser?.currentOrganizationId) {
+      loadCurrentAcademicYear();
+    }
+  }, [currentUser?.currentOrganizationId]);
+
+  const loadCurrentAcademicYear = async () => {
+    if (!currentUser?.currentOrganizationId) return;
+    
+    try {
+      const currentAcademicYear = await getCurrentAcademicYear(currentUser.currentOrganizationId);
+      const yearName = currentAcademicYear?.name || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
+      setAcademicYear(yearName);
+      
+      // Update form defaults
+      createForm.setValue('academicYear', yearName);
+      editForm.setValue('academicYear', yearName);
+    } catch (error) {
+      console.error('Error loading academic year:', error);
+      // Fallback to current year
+      const fallbackYear = `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
+      setAcademicYear(fallbackYear);
+      createForm.setValue('academicYear', fallbackYear);
+      editForm.setValue('academicYear', fallbackYear);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser?.currentOrganizationId && academicYear) {
       loadData();
     }
-  }, [currentUser?.schoolId, academicYear]);
+  }, [currentUser?.currentOrganizationId, academicYear]);
 
   const loadData = async () => {
-    if (!currentUser?.schoolId) return;
+    if (!currentUser?.currentOrganizationId) {
+      console.log('No organization ID found');
+      setLoading(false);
+      setError('No organization selected');
+      return;
+    }
 
+    if (!academicYear) {
+      console.log('No academic year set yet');
+      return;
+    }
+
+    console.log('Loading classes for org:', currentUser.currentOrganizationId, 'year:', academicYear);
     setLoading(true);
+    setError(null);
+    
     try {
       const [classesData, subjectsData] = await Promise.all([
-        getSchoolClasses(currentUser.schoolId, academicYear),
-        getSchoolSubjects(currentUser.schoolId),
+        getSchoolClasses(currentUser.currentOrganizationId, academicYear),
+        getSchoolSubjects(currentUser.currentOrganizationId),
       ]);
 
+      console.log('Loaded classes:', classesData.length, 'subjects:', subjectsData.length);
+      console.log('Classes data:', classesData);
       setClasses(classesData);
       setSubjects(subjectsData);
+      setError(null);
     } catch (error) {
       console.error('Error loading classes data:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load classes data';
+      setError(errorMessage);
       toast({
         title: 'Error',
-        description: 'Failed to load classes data',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -186,7 +236,7 @@ export default function ClassesPage() {
     try {
       await createClass({
         ...data,
-        schoolId: currentUser?.schoolId || '',
+        organizationId: currentUser?.currentOrganizationId || '',
         academicYear,
       });
 
@@ -271,15 +321,41 @@ export default function ClassesPage() {
   };
 
   if (loading) {
+    return <ListPageSkeleton />;
+  }
+
+  if (error) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="text-center space-y-4">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
+          <div>
+            <h3 className="text-lg font-semibold">Failed to Load Classes</h3>
+            <p className="text-sm text-muted-foreground mt-2">{error}</p>
+          </div>
+          <Button onClick={loadData} variant="outline">
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
+      {/* Debug Info */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <h3 className="font-semibold text-yellow-900 mb-2">Debug Info:</h3>
+        <div className="text-sm text-yellow-800 space-y-1">
+          <p>Loading: {loading ? 'YES' : 'NO'}</p>
+          <p>Error: {error || 'None'}</p>
+          <p>Current User: {currentUser?.email || 'Not loaded'}</p>
+          <p>Current Org ID: {currentUser?.currentOrganizationId || 'Not set'}</p>
+          <p>Classes Count: {classes.length}</p>
+          <p>Subjects Count: {subjects.length}</p>
+        </div>
+      </div>
+
       <PageHeader
         title="Class Management"
         description="Create and manage school classes, assign teachers, and organize subjects"
@@ -495,6 +571,7 @@ export default function ClassesPage() {
                 <TableRow className="bg-muted/50">
                   <TableHead>Class Name</TableHead>
                   <TableHead>Grade Level</TableHead>
+                  <TableHead>School Type</TableHead>
                   <TableHead>Enrollment</TableHead>
                   <TableHead>Class Teacher</TableHead>
                   <TableHead>Subjects</TableHead>
@@ -505,7 +582,7 @@ export default function ClassesPage() {
               <TableBody>
                 {classes.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No classes found. Create your first class to get started.
                     </TableCell>
                   </TableRow>
@@ -514,6 +591,19 @@ export default function ClassesPage() {
                     <TableRow key={classItem.id} className="hover:bg-muted/50">
                       <TableCell className="font-medium">{classItem.className}</TableCell>
                       <TableCell>{classItem.gradeLevel}</TableCell>
+                      <TableCell>
+                        {classItem.schoolType ? (
+                          <Badge variant="secondary" className="text-xs">
+                            {classItem.schoolType === 'preschool' ? 'Pre-School' : 
+                             classItem.schoolType === 'primary' ? 'Primary' : 
+                             classItem.schoolType === 'jhs' ? 'JHS' : 
+                             classItem.schoolType === 'shs' ? 'SHS' : 
+                             classItem.schoolType}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Users className="h-4 w-4 text-muted-foreground" />

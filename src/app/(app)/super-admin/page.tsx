@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -43,6 +42,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { PageHeader } from '@/components/common/page-header';
+import { DashboardSkeleton } from '@/components/common/page-skeletons';
 import {
   Plus,
   MoreVertical,
@@ -56,9 +56,10 @@ import {
   Send,
   Ban,
   Unlock,
-  Eye,
+  TrendingUp,
 } from 'lucide-react';
-import { getAllOrganizations, type Organization } from '@/services/organization';
+import { getAllOrganizations } from '@/services/organization';
+import { Organization } from '@/schemas/organization';
 import {
   createSchoolInvitation,
   getAllInvitations,
@@ -67,7 +68,6 @@ import {
   type SchoolInvitation,
 } from '@/services/invitation';
 import { getPendingPayments, approvePayment, rejectPayment, type PaymentRecord } from '@/services/subscription';
-import Link from 'next/link';
 
 // Super Admin Components
 import { StatsCards } from '@/components/super-admin/stats-cards';
@@ -107,8 +107,8 @@ export default function SuperAdminDashboard() {
   } = useSuperAdminStats();
 
   // Form state for new invitation
-  const [orgName, setOrgName] = useState('');
-  const [orgEmail, setOrgEmail] = useState('');
+  const [schoolName, setSchoolName] = useState('');
+  const [schoolEmail, setSchoolEmail] = useState('');
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
 
@@ -138,8 +138,9 @@ export default function SuperAdminDashboard() {
       setLoading(true);
       setStatsLoading(true);
       try {
+        // Load non-analytics data in parallel (analytics come from realtime hook)
         const [
-          orgsData,
+          organizationsData,
           invitesData,
           paymentsData,
         ] = await Promise.all([
@@ -148,7 +149,7 @@ export default function SuperAdminDashboard() {
           getPendingPayments(),
         ]);
 
-        setOrganizations(orgsData);
+        setOrganizations(organizationsData);
         setInvitations(invitesData);
         setPendingPayments(paymentsData);
       } catch (error: any) {
@@ -176,7 +177,7 @@ export default function SuperAdminDashboard() {
   }, [liveSystemStats, liveRevenueMetrics, liveSchoolActivities, liveLoading]);
 
   const handleCreateInvitation = async () => {
-    if (!currentUser || !orgName || !orgEmail || !adminName || !adminEmail) {
+    if (!currentUser || !schoolName || !schoolEmail || !adminName || !adminEmail) {
       toast({
         title: 'Missing fields',
         description: 'Please fill all required fields',
@@ -188,8 +189,8 @@ export default function SuperAdminDashboard() {
     try {
       const invitation = await createSchoolInvitation(
         {
-          schoolName: orgName,
-          schoolEmail: orgEmail,
+          schoolName,
+          schoolEmail,
           adminEmail,
           adminName,
           status: 'pending',
@@ -205,8 +206,8 @@ export default function SuperAdminDashboard() {
       });
 
       // Reset form
-      setOrgName('');
-      setOrgEmail('');
+      setSchoolName('');
+      setSchoolEmail('');
       setAdminName('');
       setAdminEmail('');
       setInviteDialogOpen(false);
@@ -314,11 +315,7 @@ export default function SuperAdminDashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (!currentUser || currentUser.role !== 'superadmin') {
@@ -332,41 +329,41 @@ export default function SuperAdminDashboard() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Super Admin Dashboard"
+        title="Syntra Admin Dashboard"
         description="Comprehensive platform management and analytics"
         actions={
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
-                Invite New Organization
+                Invite New School
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle>Invite New Organization</DialogTitle>
+                <DialogTitle>Invite New School</DialogTitle>
                 <DialogDescription>
-                  Send an invitation to an admin to set up their organization
+                  Send an invitation to a school admin to set up their organization
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Organization Name</Label>
+                  <Label>School Name</Label>
                   <Input
                     placeholder="e.g., Springfield High School"
-                    value={orgName}
-                    onChange={e => setOrgName(e.target.value)}
+                    value={schoolName}
+                    onChange={e => setSchoolName(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Organization Email</Label>
+                  <Label>School Email</Label>
                   <Input
                     type="email"
                     placeholder="info@school.com"
-                    value={orgEmail}
-                    onChange={e => setOrgEmail(e.target.value)}
+                    value={schoolEmail}
+                    onChange={e => setSchoolEmail(e.target.value)}
                   />
                 </div>
 
@@ -410,24 +407,24 @@ export default function SuperAdminDashboard() {
       {/* Revenue Analytics */}
       <RevenueCharts data={revenueMetrics} loading={statsLoading} />
 
-      {/* Organization Activity Table */}
+      {/* School Activity Table */}
       <SchoolActivityTable data={schoolActivities} loading={statsLoading} />
 
       {/* Tabs */}
-      <Tabs defaultValue="organizations" className="space-y-4">
+      <Tabs defaultValue="schools" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="organizations">Organizations</TabsTrigger>
+          <TabsTrigger value="schools">Schools</TabsTrigger>
           <TabsTrigger value="invitations">Invitations</TabsTrigger>
           <TabsTrigger value="payments">Payment Approvals</TabsTrigger>
         </TabsList>
 
-        {/* Organizations Tab */}
-        <TabsContent value="organizations" className="space-y-4">
+        {/* Schools Tab */}
+        <TabsContent value="schools" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>All Organizations</CardTitle>
               <CardDescription>
-                Manage organizations and their subscriptions
+                Manage school organizations and subscriptions
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -436,7 +433,7 @@ export default function SuperAdminDashboard() {
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       <TableHead>Organization Name</TableHead>
-                      <TableHead>Admin Email</TableHead>
+                      <TableHead>Owner Email</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Subscription</TableHead>
                       <TableHead>Created</TableHead>
@@ -462,7 +459,7 @@ export default function SuperAdminDashboard() {
                           </TableCell>
                           <TableCell>{org.subscriptionType || 'TRIAL'}</TableCell>
                           <TableCell>
-                            {new Date(org.createdAt).toLocaleDateString()}
+                            {new Date((org.createdAt as any).toDate?.() || org.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
@@ -472,11 +469,17 @@ export default function SuperAdminDashboard() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem asChild>
-                                  <Link href={`/super-admin/organizations/${org.id}`}>
-                                    <Eye className="h-4 w-4 mr-2" />
-                                    View Details
-                                  </Link>
+                                <DropdownMenuItem onClick={() => router.push(`/super-admin/organizations/${org.id}`)}>
+                                  <Users className="h-4 w-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => router.push(`/super-admin/organizations/${org.id}`)}>
+                                  <Unlock className="h-4 w-4 mr-2" />
+                                  Manage Subscription
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-red-600" onClick={() => router.push(`/super-admin/organizations/${org.id}`)}>
+                                  <Ban className="h-4 w-4 mr-2" />
+                                  Lock Organization
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -495,7 +498,7 @@ export default function SuperAdminDashboard() {
         <TabsContent value="invitations" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Organization Invitations</CardTitle>
+              <CardTitle>School Invitations</CardTitle>
               <CardDescription>
                 Track sent invitations and their status
               </CardDescription>
@@ -505,7 +508,7 @@ export default function SuperAdminDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>Organization Name</TableHead>
+                      <TableHead>School Name</TableHead>
                       <TableHead>Admin Email</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Sent Date</TableHead>
@@ -576,7 +579,7 @@ export default function SuperAdminDashboard() {
             <CardHeader>
               <CardTitle>Pending Payment Approvals</CardTitle>
               <CardDescription>
-                Review and approve subscription payments
+                Review and approve school subscription payments
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -584,7 +587,7 @@ export default function SuperAdminDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      <TableHead>Organization Name</TableHead>
+                      <TableHead>School Name</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Payment Method</TableHead>

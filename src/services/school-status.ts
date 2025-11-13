@@ -47,14 +47,14 @@ export function calculateDaysRemaining(school: School): number {
 /**
  * Update school status based on trial/subscription status
  */
-export async function updateSchoolStatus(schoolId: string, status: School['subscriptionStatus']): Promise<void> {
+export async function updateSchoolStatus(organizationId: string, status: School['subscriptionStatus']): Promise<void> {
   try {
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: status,
       updatedAt: Timestamp.now()
     });
-    console.log(`School ${schoolId} status updated to: ${status}`);
+    console.log(`School ${organizationId} status updated to: ${status}`);
   } catch (error) {
     console.error('Error updating school status:', error);
     throw new Error('Failed to update school status');
@@ -111,7 +111,7 @@ export async function lockExpiredSchools(): Promise<{ locked: number; errors: st
  * Unlock school after payment confirmation
  */
 export async function unlockSchoolAfterPayment(
-  schoolId: string, 
+  organizationId: string, 
   subscriptionType: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL',
   paymentAmount: number
 ): Promise<void> {
@@ -138,7 +138,7 @@ export async function unlockSchoolAfterPayment(
         throw new Error('Invalid subscription type');
     }
     
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
     await updateDoc(schoolRef, {
       subscriptionStatus: 'active',
       subscriptionType: subscriptionType,
@@ -156,7 +156,7 @@ export async function unlockSchoolAfterPayment(
       updatedAt: Timestamp.now()
     });
     
-    console.log(`School ${schoolId} unlocked with ${subscriptionType} subscription`);
+    console.log(`School ${organizationId} unlocked with ${subscriptionType} subscription`);
   } catch (error) {
     console.error('Error unlocking school:', error);
     throw new Error('Failed to unlock school after payment');
@@ -166,16 +166,16 @@ export async function unlockSchoolAfterPayment(
 /**
  * Set school to pending payment status
  */
-export async function setSchoolPendingPayment(schoolId: string): Promise<void> {
+export async function setSchoolPendingPayment(organizationId: string): Promise<void> {
   try {
-    await updateSchoolStatus(schoolId, 'pending_payment');
+    await updateSchoolStatus(organizationId, 'pending_payment');
     
-    const schoolRef = doc(db, SCHOOLS_COLLECTION, schoolId);
+    const schoolRef = doc(db, SCHOOLS_COLLECTION, organizationId);
     await updateDoc(schoolRef, {
       paymentStatus: 'pending'
     });
     
-    console.log(`School ${schoolId} set to pending payment`);
+    console.log(`School ${organizationId} set to pending payment`);
   } catch (error) {
     console.error('Error setting school to pending payment:', error);
     throw new Error('Failed to set school to pending payment');

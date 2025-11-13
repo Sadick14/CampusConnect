@@ -37,12 +37,12 @@ import { getStudentsByOrganization, deleteStudent } from "@/services/student";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface StudentTableProps {
-  schoolId: string;
+  organizationId: string;
   onEditStudent?: (student: Student) => void;
   onViewStudent?: (student: Student) => void;
 }
 
-export function StudentTable({ schoolId, onEditStudent, onViewStudent }: StudentTableProps) {
+export function StudentTable({ organizationId, onEditStudent, onViewStudent }: StudentTableProps) {
   const [students, setStudents] = useState<Student[]>([]);
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +55,7 @@ export function StudentTable({ schoolId, onEditStudent, onViewStudent }: Student
   // Fetch students on mount
   useEffect(() => {
     fetchStudents();
-  }, [schoolId]);
+  }, [organizationId]);
 
   // Filter students based on search query
   useEffect(() => {
@@ -65,19 +65,24 @@ export function StudentTable({ schoolId, onEditStudent, onViewStudent }: Student
     }
 
     const query = searchQuery.toLowerCase();
-    const filtered = students.filter(student => 
-      student.name.toLowerCase().includes(query) ||
-      student.email.toLowerCase().includes(query) ||
-      student.class.toLowerCase().includes(query) ||
-      student.studentIdNumber?.toLowerCase().includes(query)
-    );
+    const filtered = students.filter(student => {
+      const fullName = `${student.firstName} ${student.lastName}`.toLowerCase();
+      const email = student.email?.toLowerCase() || '';
+      const currentClass = student.currentClass?.toLowerCase() || '';
+      const studentId = student.studentIdNumber?.toLowerCase() || '';
+      
+      return fullName.includes(query) ||
+        email.includes(query) ||
+        currentClass.includes(query) ||
+        studentId.includes(query);
+    });
     setFilteredStudents(filtered);
   }, [searchQuery, students]);
 
   async function fetchStudents() {
     try {
       setLoading(true);
-      const fetchedStudents = await getStudentsByOrganization(schoolId);
+      const fetchedStudents = await getStudentsByOrganization(organizationId);
       setStudents(fetchedStudents);
       setFilteredStudents(fetchedStudents);
     } catch (error: any) {
@@ -106,7 +111,7 @@ export function StudentTable({ schoolId, onEditStudent, onViewStudent }: Student
       
       toast({
         title: "Student Deleted",
-        description: `${studentToDelete.name} has been removed from the system.`,
+        description: `${studentToDelete.firstName} ${studentToDelete.lastName} has been removed from the system.`,
       });
 
       // Refresh the list
@@ -127,15 +132,20 @@ export function StudentTable({ schoolId, onEditStudent, onViewStudent }: Student
 
   function getStatusBadge(status?: string) {
     const statusValue = status || 'active';
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-      active: 'default',
-      inactive: 'secondary',
-      graduated: 'outline',
-      transferred: 'destructive',
+    
+    // Define badge variants and colors for each status
+    const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline', className?: string }> = {
+      active: { variant: 'default' },
+      inactive: { variant: 'secondary' },
+      graduated: { variant: 'outline' },
+      transferred: { variant: 'destructive' },
+      draft: { variant: 'outline', className: 'border-amber-500 text-amber-700 bg-amber-50' },
     };
 
+    const config = statusConfig[statusValue] || { variant: 'default' };
+
     return (
-      <Badge variant={variants[statusValue] || 'default'}>
+      <Badge variant={config.variant} className={config.className}>
         {statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
       </Badge>
     );
@@ -200,12 +210,12 @@ export function StudentTable({ schoolId, onEditStudent, onViewStudent }: Student
                   <TableCell className="font-mono text-sm">
                     {student.studentIdNumber || '-'}
                   </TableCell>
-                  <TableCell className="font-medium">{student.name}</TableCell>
-                  <TableCell className="text-sm">{student.email}</TableCell>
-                  <TableCell>{student.class}</TableCell>
+                  <TableCell className="font-medium">{student.firstName} {student.lastName}</TableCell>
+                  <TableCell className="text-sm">{student.email || '-'}</TableCell>
+                  <TableCell>{student.currentClass}</TableCell>
                   <TableCell>{getStatusBadge(student.status)}</TableCell>
                   <TableCell className="text-sm">
-                    {student.parentContact?.email || student.parentContact?.phone || '-'}
+                    {student.guardians?.[0]?.email || student.guardians?.[0]?.phone || '-'}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -255,7 +265,7 @@ export function StudentTable({ schoolId, onEditStudent, onViewStudent }: Student
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete the student record for{' '}
-              <strong>{studentToDelete?.name}</strong>. This action cannot be undone.
+              <strong>{studentToDelete?.firstName} {studentToDelete?.lastName}</strong>. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

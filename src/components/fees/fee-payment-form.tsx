@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -47,7 +47,7 @@ const PaymentFormSchema = z.object({
 type PaymentFormValues = z.infer<typeof PaymentFormSchema>;
 
 interface FeePaymentFormProps {
-  schoolId: string;
+  organizationId: string;
   studentId: string;
   studentName: string;
   onSuccess?: (payment: PaymentRecord) => void;
@@ -55,7 +55,7 @@ interface FeePaymentFormProps {
 }
 
 export function FeePaymentForm({
-  schoolId,
+  organizationId,
   studentId,
   studentName,
   onSuccess,
@@ -71,7 +71,7 @@ export function FeePaymentForm({
   React.useEffect(() => {
     const loadFees = async () => {
       try {
-        const fees = await getStudentFeeRecords(schoolId, studentId);
+        const fees = await getStudentFeeRecords(organizationId, studentId);
         const outstanding = fees.filter(
           f => f.paymentStatus !== 'paid' && f.paymentStatus !== 'exempted'
         );
@@ -92,7 +92,7 @@ export function FeePaymentForm({
     };
 
     loadFees();
-  }, [schoolId, studentId, toast]);
+  }, [organizationId, studentId, toast]);
 
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(PaymentFormSchema),
@@ -149,11 +149,12 @@ export function FeePaymentForm({
 
       const paymentData = {
         feeRecordId: data.feeRecordId,
-        schoolId,
+        organizationId,
         studentId,
         studentName,
         paymentType: selectedFee.feeType,
         amount: data.amount,
+        currency: 'GHS',
         paymentMethod: data.paymentMethod,
         transactionId: data.transactionId || undefined,
         receiptNumber,

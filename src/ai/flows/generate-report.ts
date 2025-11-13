@@ -12,7 +12,8 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateTermReportInputSchema = z.object({
-  schoolId: z.string().describe('The ID of the school for which to generate the report.'),
+  organizationId: z.string().describe('The ID of the organization/school for which to generate the report.'),
+  schoolId: z.string().optional().describe('Deprecated - use organizationId'),
   term: z.string().describe('The term for which to generate the report (e.g., Fall 2024).'),
   academicYear: z.string().describe('The academic year for the report (e.g., 2024-2025).'),
   studentPerformanceData: z

@@ -52,13 +52,13 @@ export async function getUserProfile(uid: string): Promise<User | null> {
 
     const data = userSnap.data();
     
-    // Fetch school details if schoolId exists
+    // Fetch school details if organizationId exists
     let schoolName = data.schoolName || null;
     let schoolLogoUrl = data.schoolLogoUrl || null;
     
-    if (data.schoolId && data.role !== 'superadmin') {
+    if (data.organizationId && data.role !== 'superadmin') {
       try {
-        const schoolRef = doc(db, 'schools', data.schoolId);
+        const schoolRef = doc(db, 'schools', data.organizationId);
         const schoolSnap = await getDoc(schoolRef);
         
         if (schoolSnap.exists()) {
@@ -76,9 +76,9 @@ export async function getUserProfile(uid: string): Promise<User | null> {
           }
         } else {
           // School not found, clear association
-          console.warn(`School ${data.schoolId} not found for user ${uid}`);
+          console.warn(`School ${data.organizationId} not found for user ${uid}`);
           await updateDoc(userRef, {
-            schoolId: null,
+            organizationId: null,
             schoolName: null,
             schoolLogoUrl: null,
             updatedAt: serverTimestamp()
@@ -96,14 +96,15 @@ export async function getUserProfile(uid: string): Promise<User | null> {
       name: data.name,
       email: data.email,
       role: data.role,
-      schoolId: data.schoolId || null,
+      currentOrganizationId: (data as any).organizationId || null,
+      organizationIds: data.organizationIds || [],
       schoolName,
       schoolLogoUrl,
       class: data.class || null,
       parentContact: data.parentContact || null,
       createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-    };
+    } as User;
   } catch (error: any) {
     console.error(`Error fetching user profile for UID ${uid}:`, error);
     return null;
@@ -134,12 +135,23 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
       const userSnap = await getDoc(userRef);
       const existingProfile = userSnap.exists() ? userSnap.data() : null;
       
+      // Get user's current organization from user_organizations
+      let currentOrganizationId: string | null = null;
+      try {
+        const { getUserCurrentOrganization } = await import('./user-organization');
+        currentOrganizationId = await getUserCurrentOrganization(firebaseUser.uid);
+        console.log(`[User Service] Current organization ID: ${currentOrganizationId}`);
+      } catch (error) {
+        console.error('[User Service] Error fetching current organization:', error);
+      }
+      
       // Build profile data
       const profileData: any = {
         id: firebaseUser.uid,
         email: firebaseUser.email,
         name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
         photoURL: firebaseUser.photoURL || null,
+        currentOrganizationId: currentOrganizationId,
       };
       
       if (existingProfile) {
@@ -147,7 +159,8 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
         console.log(`[User Service] Existing user found with role: ${existingProfile.role}`);
         
         profileData.role = existingProfile.role;
-        profileData.schoolId = existingProfile.schoolId || null;
+        profileData.organizationId = existingProfile.organizationId || null;
+        profileData.organizationIds = existingProfile.organizationIds || [];
         profileData.schoolName = existingProfile.schoolName || null;
         profileData.schoolLogoUrl = existingProfile.schoolLogoUrl || null;
         profileData.class = existingProfile.class || null;
@@ -158,16 +171,17 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
         if (isSuperAdmin && profileData.role !== 'superadmin') {
           console.log(`[User Service] Promoting user to superadmin based on email`);
           profileData.role = 'superadmin';
-          profileData.schoolId = null;
+          profileData.organizationId = null;
           profileData.schoolName = null;
           profileData.schoolLogoUrl = null;
+          profileData.currentOrganizationId = null;
         }
         
         profileData.updatedAt = serverTimestamp();
         
         // Update existing document
         await updateDoc(userRef, profileData);
-        console.log(`[User Service] Updated existing user profile`);
+        console.log(`[User Service] Updated existing user profile with currentOrganizationId: ${currentOrganizationId}`);
         
       } else {
         // New user - create profile
@@ -175,13 +189,13 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
         
         if (isSuperAdmin) {
           profileData.role = 'superadmin';
-          profileData.schoolId = null;
+          profileData.organizationId = null;
           profileData.schoolName = null;
           profileData.schoolLogoUrl = null;
         } else {
           // New users default to school_admin (can be changed during onboarding)
           profileData.role = 'school_admin';
-          profileData.schoolId = null;
+          profileData.organizationId = null;
           profileData.schoolName = null;
           profileData.schoolLogoUrl = null;
         }
@@ -228,7 +242,8 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
         name: data.name,
         email: data.email,
         role: data.role,
-        schoolId: data.schoolId || null,
+        currentOrganizationId: (data as any).organizationId || data.currentOrganizationId || null,
+        organizationIds: data.organizationIds || [],
         schoolName: data.schoolName || null,
         schoolLogoUrl: data.schoolLogoUrl || null,
         photoURL: data.photoURL || null,
@@ -236,7 +251,7 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
         parentContact: data.parentContact || null,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-      };
+      } as User;
       
     } catch (error: any) {
       console.error(`[User Service] ❌ Error syncing user profile:`, error);
@@ -250,7 +265,7 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
         email: firebaseUser.email,
         name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
         role: isSuperAdmin ? 'superadmin' : 'school_admin',
-        schoolId: null,
+        organizationId: null,
         photoURL: firebaseUser.photoURL || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -272,9 +287,8 @@ export async function syncUserProfileOnLogin(firebaseUser: FirebaseUser): Promis
         email: firebaseUser.email!,
         name: fallbackProfile.name,
         role: fallbackProfile.role,
-        schoolId: null,
-        schoolName: null,
-        schoolLogoUrl: null,
+        currentOrganizationId: null,
+        organizationIds: [],
         photoURL: firebaseUser.photoURL || null,
         class: null,
         parentContact: null,
@@ -293,7 +307,7 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
     const usersRef = collection(db, 'users');
     
     let q = forSchoolId 
-      ? query(usersRef, where('schoolId', '==', forSchoolId))
+      ? query(usersRef, where('organizationId', '==', forSchoolId))
       : query(usersRef);
 
     const querySnapshot = await getDocs(q);
@@ -306,15 +320,14 @@ export async function getUsers(forSchoolId?: string): Promise<User[]> {
         name: data.name,
         email: data.email,
         role: data.role,
-        schoolId: data.schoolId || null,
-        schoolName: data.schoolName || null,
-        schoolLogoUrl: data.schoolLogoUrl || null,
+        currentOrganizationId: (data as any).organizationId || data.currentOrganizationId || null,
+        organizationIds: data.organizationIds || [],
         photoURL: data.photoURL || null,
         class: data.class || null,
         parentContact: data.parentContact || null,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-      });
+      } as User);
     });
 
     console.log(`Fetched ${users.length} users${forSchoolId ? ` for school ${forSchoolId}` : ''}`);
@@ -342,7 +355,7 @@ export async function adminCreateUserProfile(
         throw new Error("Password is required to create a new user.");
     }
     
-    let effectiveSchoolId = userData.schoolId;
+    let effectiveSchoolId = userData.organizationId;
     if ((userData.role === 'teacher' || userData.role === 'student') && !effectiveSchoolId) {
         if (creatingAdminRole === 'school_admin' && creatingAdminSchoolId) {
             effectiveSchoolId = creatingAdminSchoolId;
@@ -386,7 +399,7 @@ export async function adminCreateUserProfile(
         name: userData.name,
         email: userData.email,
         role: userData.role,
-        schoolId: effectiveSchoolId || null,
+        organizationId: effectiveSchoolId || null,
         schoolName: null,
         schoolLogoUrl: null,
         class: (userData.role === 'student' ? userData.class : null) || null,
@@ -395,10 +408,10 @@ export async function adminCreateUserProfile(
         updatedAt: serverTimestamp(),
     };
 
-    // Fetch school details if schoolId provided
-    if (profileToCreate.schoolId) {
+    // Fetch school details if organizationId provided
+    if (profileToCreate.organizationId) {
         try {
-            const schoolRef = doc(db, 'schools', profileToCreate.schoolId);
+            const schoolRef = doc(db, 'schools', profileToCreate.organizationId);
             const schoolSnap = await getDoc(schoolRef);
             
             if (schoolSnap.exists()) {
@@ -407,12 +420,12 @@ export async function adminCreateUserProfile(
                 profileToCreate.schoolLogoUrl = schoolData.logoUrl || null;
                 console.log(`Assigning user to school: ${profileToCreate.schoolName}`);
             } else {
-                console.warn(`School ID ${profileToCreate.schoolId} not found, setting to null`);
-                profileToCreate.schoolId = null;
+                console.warn(`School ID ${profileToCreate.organizationId} not found, setting to null`);
+                profileToCreate.organizationId = null;
             }
         } catch (error) {
             console.error('Error fetching school:', error);
-            profileToCreate.schoolId = null;
+            profileToCreate.organizationId = null;
         }
     }
 
@@ -459,7 +472,8 @@ export async function adminUpdateUserProfile(
     
     if (updatingAdminRole === 'school_admin') {
         if (!updatingAdminSchoolId) throw new Error("School admin must have a school ID.");
-        if (existingUser.schoolId !== updatingAdminSchoolId) {
+        const existingOrgId = (existingUser as any).organizationId || existingUser.currentOrganizationId;
+        if (existingOrgId !== updatingAdminSchoolId) {
             throw new Error("School admins can only edit users within their own school.");
         }
     }
@@ -532,8 +546,8 @@ export async function isSuperAdminEmail(email: string): Promise<boolean> {
 /**
  * Get students with parent contact for a specific school.
  */
-export async function getStudentsWithContacts(schoolId: string): Promise<StudentWithContact[]> {
-    if (!schoolId) {
+export async function getStudentsWithContacts(organizationId: string): Promise<StudentWithContact[]> {
+    if (!organizationId) {
         throw new Error("School ID is required to fetch students.");
     }
     
@@ -542,7 +556,7 @@ export async function getStudentsWithContacts(schoolId: string): Promise<Student
         const usersRef = collection(db, 'users');
         const studentsQuery = query(
             usersRef,
-            where('schoolId', '==', schoolId),
+            where('organizationId', '==', organizationId),
             where('role', '==', 'student')
         );
         
@@ -556,17 +570,16 @@ export async function getStudentsWithContacts(schoolId: string): Promise<Student
                 name: data.name,
                 email: data.email,
                 role: data.role,
-                schoolId: data.schoolId,
-                schoolName: data.schoolName || null,
-                schoolLogoUrl: data.schoolLogoUrl || null,
+                currentOrganizationId: (data as any).organizationId || data.currentOrganizationId || null,
+                organizationIds: data.organizationIds || [],
                 class: data.class || null,
                 parentContact: data.parentContact || null,
                 createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
                 updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
-            });
+            } as StudentWithContact);
         });
         
-        console.log(`Fetched ${students.length} students for school ${schoolId}`);
+        console.log(`Fetched ${students.length} students for school ${organizationId}`);
         return students;
     } catch (error: any) {
         console.error(`Error fetching students:`, error);

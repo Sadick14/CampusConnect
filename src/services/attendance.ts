@@ -40,7 +40,7 @@ export interface Attendance {
   /**
    * The school ID.
    */
-  schoolId: string;
+  organizationId: string;
   /**
    * The class/grade.
    */
@@ -104,7 +104,7 @@ export async function getAttendance(id: string): Promise<Attendance | null> {
       id: attendanceSnap.id,
       studentId: data.studentId,
       studentName: data.studentName,
-      schoolId: data.schoolId,
+      organizationId: data.organizationId,
       class: data.class,
       date: data.date,
       present: data.present,
@@ -122,13 +122,13 @@ export async function getAttendance(id: string): Promise<Attendance | null> {
 /**
  * Asynchronously retrieves attendance records for a specific date and school.
  *
- * @param schoolId The school ID.
+ * @param organizationId The school ID.
  * @param date The date (ISO string, date only).
  * @param classFilter Optional class filter.
  * @returns A promise that resolves to an array of Attendance objects.
  */
 export async function getAttendanceByDate(
-  schoolId: string, 
+  organizationId: string, 
   date: string, 
   classFilter?: string
 ): Promise<Attendance[]> {
@@ -138,14 +138,14 @@ export async function getAttendanceByDate(
     
     let q = query(
       attendanceRef,
-      where('schoolId', '==', schoolId),
+      where('organizationId', '==', organizationId),
       where('date', '==', date)
     );
 
     if (classFilter) {
       q = query(
         attendanceRef,
-        where('schoolId', '==', schoolId),
+        where('organizationId', '==', organizationId),
         where('date', '==', date),
         where('class', '==', classFilter)
       );
@@ -160,7 +160,7 @@ export async function getAttendanceByDate(
         id: doc.id,
         studentId: data.studentId,
         studentName: data.studentName,
-        schoolId: data.schoolId,
+        organizationId: data.organizationId,
         class: data.class,
         date: data.date,
         present: data.present,
@@ -216,7 +216,7 @@ export async function getStudentAttendance(
         id: doc.id,
         studentId: data.studentId,
         studentName: data.studentName,
-        schoolId: data.schoolId,
+        organizationId: data.organizationId,
         class: data.class,
         date: data.date,
         present: data.present,
@@ -271,13 +271,13 @@ export async function createAttendance(
 /**
  * Asynchronously marks attendance for multiple students in bulk.
  *
- * @param schoolId The school ID.
+ * @param organizationId The school ID.
  * @param date The date for the attendance (ISO string, date only).
  * @param attendanceData Array of bulk attendance data.
  * @returns A promise that resolves when all records are created/updated.
  */
 export async function markBulkAttendance(
-  schoolId: string,
+  organizationId: string,
   date: string,
   attendanceData: BulkAttendanceData[]
 ): Promise<void> {
@@ -293,7 +293,7 @@ export async function markBulkAttendance(
       batch.set(attendanceRef, {
         studentId: record.studentId,
         studentName: record.studentName,
-        schoolId: schoolId,
+        organizationId: organizationId,
         class: record.class,
         date: date,
         present: record.present,

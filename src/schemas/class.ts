@@ -8,6 +8,7 @@ export interface SchoolClass {
   gradeLevel: string;
   section: string;
   academicYear: string;
+  schoolType?: string; // School type this class belongs to
   capacity: number;
   currentEnrollment: number;
   classTeacherId?: string;

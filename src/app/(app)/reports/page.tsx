@@ -25,7 +25,7 @@ import { generateTermReport, type GenerateTermReportInput } from '@/ai/flows/gen
 import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 
 const reportFormSchema = z.object({
-  schoolId: z.string().min(1, "School ID is required."),
+  organizationId: z.string().min(1, "Organization ID is required."),
   term: z.string().min(1, "Term is required."),
   academicYear: z.string().min(1, "Academic Year is required."),
   studentPerformanceData: z.string().min(10, "Student performance data is required."),
@@ -44,7 +44,7 @@ export default function AiReportsPage() {
   const form = useForm<ReportFormValues>({
     resolver: zodResolver(reportFormSchema),
     defaultValues: {
-      schoolId: "",
+      organizationId: "",
       term: "",
       academicYear: "",
       studentPerformanceData: "",
@@ -53,10 +53,10 @@ export default function AiReportsPage() {
     },
   });
 
-  // Pre-fill schoolId if user is school_admin and has a schoolId
+  // Pre-fill organizationId if user is organization_owner and has an organization
   useEffect(() => {
-    if (currentUser && currentUser.role === 'school_admin' && currentUser.schoolId) {
-      form.setValue('schoolId', currentUser.schoolId);
+    if (currentUser && (currentUser.role === 'organization_owner' || currentUser.role === 'school_admin') && currentUser.currentOrganizationId) {
+      form.setValue('organizationId', currentUser.currentOrganizationId);
     }
   }, [currentUser, form]);
 
@@ -105,15 +105,15 @@ export default function AiReportsPage() {
               <CardContent className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="schoolId"
+                  name="organizationId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>School ID</FormLabel>
+                      <FormLabel>Organization ID</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="Enter school ID (e.g., SCH001)" 
+                          placeholder="Enter organization ID" 
                           {...field} 
-                          disabled={currentUser?.role === 'school_admin' && !!currentUser?.schoolId} // Disable if school admin
+                          disabled={!!currentUser?.currentOrganizationId} // Disable if user has organization
                         />
                       </FormControl>
                       <FormMessage />

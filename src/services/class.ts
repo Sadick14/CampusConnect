@@ -9,7 +9,6 @@ import {
   getDoc,
   query,
   where,
-  orderBy,
   Timestamp,
   writeBatch,
 } from 'firebase/firestore';
@@ -56,12 +55,37 @@ export async function getSchoolClasses(
   academicYear?: string
 ): Promise<SchoolClass[]> {
   const db = getDb();
-  const constraints: any[] = [where('organizationId', '==', organizationId)];
-  if (academicYear) constraints.push(where('academicYear', '==', academicYear));
-  constraints.push(orderBy('gradeLevel', 'asc'), orderBy('section', 'asc'));
-  const q = query(collection(db, COLLECTION_PATHS.classes), ...constraints);
+  
+  // Simple query - just filter by organizationId, no ordering in Firebase
+  const q = query(
+    collection(db, COLLECTION_PATHS.classes),
+    where('organizationId', '==', organizationId)
+  );
+  
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as SchoolClass[];
+  let classes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as SchoolClass[];
+  
+  // Filter by academicYear client-side if provided
+  if (academicYear) {
+    classes = classes.filter(c => c.academicYear === academicYear);
+  }
+  
+  // Sort client-side by gradeLevel and section
+  classes.sort((a, b) => {
+    // First sort by grade level
+    const gradeA = a.gradeLevel || '';
+    const gradeB = b.gradeLevel || '';
+    const gradeCompare = gradeA.localeCompare(gradeB);
+    
+    if (gradeCompare !== 0) return gradeCompare;
+    
+    // Then sort by section
+    const sectionA = a.section || '';
+    const sectionB = b.section || '';
+    return sectionA.localeCompare(sectionB);
+  });
+  
+  return classes;
 }
 
 export async function updateClass(
@@ -92,13 +116,24 @@ export async function createSubject(subjectData: SubjectInput): Promise<Subject>
 
 export async function getSchoolSubjects(organizationId: string): Promise<Subject[]> {
   const db = getDb();
+  
+  // Simple query - just filter by organizationId, no ordering in Firebase
   const q = query(
     collection(db, COLLECTION_PATHS.subjects),
-    where('organizationId', '==', organizationId),
-    orderBy('name', 'asc')
+    where('organizationId', '==', organizationId)
   );
+  
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Subject[];
+  const subjects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Subject[];
+  
+  // Sort client-side by name
+  subjects.sort((a, b) => {
+    const nameA = a.name || '';
+    const nameB = b.name || '';
+    return nameA.localeCompare(nameB);
+  });
+  
+  return subjects;
 }
 
 export async function updateSubject(
@@ -135,15 +170,30 @@ export async function getClassTeacherAssignments(
   academicYear?: string
 ): Promise<TeacherAssignment[]> {
   const db = getDb();
-  const constraints: any[] = [
+  
+  // Simple query - just filter by organizationId and classId
+  const q = query(
+    collection(db, COLLECTION_PATHS.teacherAssignments),
     where('organizationId', '==', organizationId),
-    where('classId', '==', classId),
-  ];
-  if (academicYear) constraints.push(where('academicYear', '==', academicYear));
-  constraints.push(orderBy('subjectName', 'asc'));
-  const q = query(collection(db, COLLECTION_PATHS.teacherAssignments), ...constraints);
+    where('classId', '==', classId)
+  );
+  
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TeacherAssignment[];
+  let assignments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TeacherAssignment[];
+  
+  // Filter by academicYear client-side if provided
+  if (academicYear) {
+    assignments = assignments.filter(a => a.academicYear === academicYear);
+  }
+  
+  // Sort client-side by subjectName
+  assignments.sort((a, b) => {
+    const nameA = a.subjectName || '';
+    const nameB = b.subjectName || '';
+    return nameA.localeCompare(nameB);
+  });
+  
+  return assignments;
 }
 
 export async function getTeacherAssignments(
@@ -152,15 +202,30 @@ export async function getTeacherAssignments(
   academicYear?: string
 ): Promise<TeacherAssignment[]> {
   const db = getDb();
-  const constraints: any[] = [
+  
+  // Simple query - just filter by organizationId and teacherId
+  const q = query(
+    collection(db, COLLECTION_PATHS.teacherAssignments),
     where('organizationId', '==', organizationId),
-    where('teacherId', '==', teacherId),
-  ];
-  if (academicYear) constraints.push(where('academicYear', '==', academicYear));
-  constraints.push(orderBy('className', 'asc'));
-  const q = query(collection(db, COLLECTION_PATHS.teacherAssignments), ...constraints);
+    where('teacherId', '==', teacherId)
+  );
+  
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TeacherAssignment[];
+  let assignments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TeacherAssignment[];
+  
+  // Filter by academicYear client-side if provided
+  if (academicYear) {
+    assignments = assignments.filter(a => a.academicYear === academicYear);
+  }
+  
+  // Sort client-side by className
+  assignments.sort((a, b) => {
+    const nameA = a.className || '';
+    const nameB = b.className || '';
+    return nameA.localeCompare(nameB);
+  });
+  
+  return assignments;
 }
 
 export async function updateTeacherAssignment(
@@ -197,15 +262,33 @@ export async function getClassTimetable(
   academicYear?: string
 ): Promise<TimetableEntry[]> {
   const db = getDb();
-  const constraints: any[] = [
+  
+  // Simple query - just filter by organizationId and classId
+  const q = query(
+    collection(db, COLLECTION_PATHS.timetables),
     where('organizationId', '==', organizationId),
-    where('classId', '==', classId),
-  ];
-  if (academicYear) constraints.push(where('academicYear', '==', academicYear));
-  constraints.push(orderBy('dayOfWeek', 'asc'), orderBy('period', 'asc'));
-  const q = query(collection(db, COLLECTION_PATHS.timetables), ...constraints);
+    where('classId', '==', classId)
+  );
+  
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimetableEntry[];
+  let entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimetableEntry[];
+  
+  // Filter by academicYear client-side if provided
+  if (academicYear) {
+    entries = entries.filter(e => e.academicYear === academicYear);
+  }
+  
+  // Sort client-side by dayOfWeek and period
+  const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  entries.sort((a, b) => {
+    const dayA = dayOrder.indexOf(a.dayOfWeek || '');
+    const dayB = dayOrder.indexOf(b.dayOfWeek || '');
+    const dayCompare = dayA - dayB;
+    if (dayCompare !== 0) return dayCompare;
+    return (a.period || 0) - (b.period || 0);
+  });
+  
+  return entries;
 }
 
 export async function getTeacherTimetable(
@@ -214,15 +297,33 @@ export async function getTeacherTimetable(
   academicYear?: string
 ): Promise<TimetableEntry[]> {
   const db = getDb();
-  const constraints: any[] = [
+  
+  // Simple query - just filter by organizationId and teacherId
+  const q = query(
+    collection(db, COLLECTION_PATHS.timetables),
     where('organizationId', '==', organizationId),
-    where('teacherId', '==', teacherId),
-  ];
-  if (academicYear) constraints.push(where('academicYear', '==', academicYear));
-  constraints.push(orderBy('dayOfWeek', 'asc'), orderBy('period', 'asc'));
-  const q = query(collection(db, COLLECTION_PATHS.timetables), ...constraints);
+    where('teacherId', '==', teacherId)
+  );
+  
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimetableEntry[];
+  let entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TimetableEntry[];
+  
+  // Filter by academicYear client-side if provided
+  if (academicYear) {
+    entries = entries.filter(e => e.academicYear === academicYear);
+  }
+  
+  // Sort client-side by dayOfWeek and period
+  const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  entries.sort((a, b) => {
+    const dayA = dayOrder.indexOf(a.dayOfWeek || '');
+    const dayB = dayOrder.indexOf(b.dayOfWeek || '');
+    const dayCompare = dayA - dayB;
+    if (dayCompare !== 0) return dayCompare;
+    return (a.period || 0) - (b.period || 0);
+  });
+  
+  return entries;
 }
 
 export async function getSchoolTimetables(
@@ -230,14 +331,38 @@ export async function getSchoolTimetables(
   filters?: { classId?: string; dayOfWeek?: string; academicYear?: string }
 ): Promise<TimetableEntry[]> {
   const db = getDb();
-  const constraints: any[] = [where('organizationId', '==', organizationId)];
-  if (filters?.classId && filters.classId !== 'all') constraints.push(where('classId', '==', filters.classId));
-  if (filters?.dayOfWeek && filters.dayOfWeek !== 'all') constraints.push(where('dayOfWeek', '==', filters.dayOfWeek));
-  if (filters?.academicYear) constraints.push(where('academicYear', '==', filters.academicYear));
-  constraints.push(orderBy('dayOfWeek', 'asc'), orderBy('period', 'asc'));
-  const q = query(collection(db, COLLECTION_PATHS.timetables), ...constraints);
+  
+  // Simple query - just filter by organizationId
+  const q = query(
+    collection(db, COLLECTION_PATHS.timetables),
+    where('organizationId', '==', organizationId)
+  );
+  
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as TimetableEntry[];
+  let entries = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as TimetableEntry[];
+  
+  // Filter client-side based on provided filters
+  if (filters?.classId && filters.classId !== 'all') {
+    entries = entries.filter(e => e.classId === filters.classId);
+  }
+  if (filters?.dayOfWeek && filters.dayOfWeek !== 'all') {
+    entries = entries.filter(e => e.dayOfWeek === filters.dayOfWeek);
+  }
+  if (filters?.academicYear) {
+    entries = entries.filter(e => e.academicYear === filters.academicYear);
+  }
+  
+  // Sort client-side by dayOfWeek and period
+  const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  entries.sort((a, b) => {
+    const dayA = dayOrder.indexOf(a.dayOfWeek || '');
+    const dayB = dayOrder.indexOf(b.dayOfWeek || '');
+    const dayCompare = dayA - dayB;
+    if (dayCompare !== 0) return dayCompare;
+    return (a.period || 0) - (b.period || 0);
+  });
+  
+  return entries;
 }
 
 export async function updateTimetableEntry(
